@@ -25,6 +25,25 @@ High-performance motion detection utility optimized for video frame analysis, fe
 - **Link-time optimization**: `-flto` for maximum performance
 - **macOS Accelerate**: Framework integration on Apple Silicon
 
+## 📁 Project Structure
+
+```
+motion-detector/
+├── motion_detector.cpp        # Main source (advanced version)
+├── motion_detector_simple.cpp # Simple version  
+├── motion_stb_image.h        # Optimized image loading library
+├── stb_image.h              # Standard stb_image library
+├── Makefile                 # Build system
+├── README.md               # This documentation
+└── tests/                  # Test directory
+    ├── images/            # Test images
+    ├── simple_test.sh     # Quick test
+    ├── test_large_images.sh  # Large image tests
+    ├── create_large_test_images.py  # Create test images
+    ├── test_motion.sh     # Comprehensive tests
+    └── benchmark_*.sh     # Performance tests
+```
+
 ## 📊 Performance Gains Overview
 
 | Optimization | Speedup | Time | Use Case |
@@ -123,35 +142,16 @@ make clean
 ./motion-detector-simple prev.jpg curr.jpg -s 4 -g
 ```
 
-**Smart 3-stage pipeline:**
+**Script integration:**
 ```bash
-# Stage 1: File size check first
-if ./motion-detector cam1.jpg cam2.jpg -f > /dev/null; then
-    # Stage 2: DC-only confirmation
-    ./motion-detector cam1.jpg cam2.jpg -d -g -s 2 --benchmark
+# Check exit codes
+./motion-detector img1.jpg img2.jpg && echo "Motion detected!"
+
+# Capture output
+result=$(./motion-detector img1.jpg img2.jpg)
+if [ "$result" = "1" ]; then
+    echo "Motion found"
 fi
-```
-
-**Noise-resistant detection:**
-```bash
-./motion-detector-simple cam1.jpg cam2.jpg -t 30 -b -m 2.5
-```
-
-**Video monitoring setup:**
-```bash
-./motion-detector-simple old.jpg new.jpg -g -s 2 -t 20 -m 1.5 --benchmark
-```
-
-**Strict DC-only compatibility check:**
-```bash
-# Test if your JPEG files support DC-only mode
-./motion-detector cam1.jpg cam2.jpg --dc-strict -v
-
-# If error occurs, your files are incompatible (progressive JPEG, etc.)
-# Use standard -d flag for automatic fallback to full decoding
-
-# Production usage after successful test:
-./motion-detector cam1.jpg cam2.jpg -d -g -s 2 --benchmark
 ```
 
 ## 🎯 Exit Codes
@@ -159,6 +159,40 @@ fi
 - **0**: No motion detected
 - **1**: Motion detected
 - **2**: Error (file not found, invalid format, etc.)
+
+## 🧪 Testing
+
+The `tests/` directory contains comprehensive test scripts:
+
+```bash
+cd tests
+
+# Quick functionality test
+./simple_test.sh
+
+# Large image tests (HD resolution)
+./test_large_images.sh
+
+# Full test suite
+./test_motion.sh
+
+# Create test images
+python3 create_large_test_images.py
+
+# Performance benchmarks
+./benchmark_filesize.sh
+./benchmark_dc.sh
+```
+
+### **Test Scripts Overview**
+
+| Script | Purpose | Description |
+|--------|---------|-------------|
+| `simple_test.sh` | Quick test | Basic functionality with existing images |
+| `test_large_images.sh` | HD tests | Tests with 1920x1080 images for segfault detection |
+| `test_motion.sh` | Full suite | Comprehensive motion detection testing |
+| `create_large_test_images.py` | Image creation | Generate large test images using PIL or sips |
+| `benchmark_*.sh` | Performance | Speed and optimization testing |
 
 ## 📈 Performance Analysis
 
@@ -179,35 +213,9 @@ fi
 | DC-only + Scale 2 | ~4 ms | 12x | 250 frames/s |
 | Full analysis | ~10 ms | 1x | 100 frames/s |
 
-### **Memory Usage**
-- **File size mode**: ~1KB (no image loading)
-- **DC-only mode**: ~2MB per HD frame  
-- **Standard mode**: ~6MB per HD frame
-- **Buffer reuse**: Zero allocation after initialization
-
-## 🔬 Technical Details
-
-### **Image Loading Pipeline**
-1. **Format detection**: Quick header analysis
-2. **Mode selection**: DC-only vs full decode
-3. **Buffer management**: Reuse existing allocations
-4. **SIMD conversion**: Hardware-accelerated processing
-5. **Downsampling**: Optional resolution reduction
-
-### **Motion Detection Algorithm**
-1. **Preprocessing**: Optional blur filter application
-2. **Pixel iteration**: Scaled sampling pattern
-3. **Threshold comparison**: Per-pixel or grayscale difference
-4. **Statistics**: Percentage calculation and thresholding
-
-### **SIMD Optimizations**
-- **SSE2**: 16 pixels per instruction (x86/x64)
-- **NEON**: 8 pixels per instruction (ARM)
-- **Fallback**: Scalar implementation for compatibility
-
 ## 🚄 Smart 3-Stage Pipeline
 
-The most efficient approach for video processing combines all optimization methods in a cascading pipeline:
+The most efficient approach for video processing combines all optimization methods:
 
 ### **Stage 1: File Size Pre-screening (~25 μs)**
 ```bash
@@ -216,7 +224,6 @@ The most efficient approach for video processing combines all optimization metho
 - **Ultra-fast**: 80,000+ comparisons/second
 - **Header-aware**: Subtracts JPEG/PNG headers from file size
 - **Zero I/O**: Only reads file metadata, no image loading
-- **Perfect filter**: Catches 90%+ of unchanged frames instantly
 
 ### **Stage 2: DC-Only Confirmation (~1.6 ms)**
 ```bash
@@ -225,7 +232,6 @@ The most efficient approach for video processing combines all optimization metho
 - **Fast loading**: JPEG DC coefficients only (10x faster)
 - **Motion-optimized**: 8x8 block averages perfect for change detection
 - **Artifact-resistant**: Ignores JPEG compression noise
-- **Visual confirmation**: Actual pixel analysis for confidence
 
 ### **Stage 3: High-Precision Analysis (~2.5 ms)**
 ```bash
@@ -233,47 +239,6 @@ The most efficient approach for video processing combines all optimization metho
 ```
 - **Maximum accuracy**: Full image analysis with noise filtering
 - **Detailed results**: Pixel-level change statistics
-- **Quality assurance**: Final confirmation for critical applications
-
-### **Complete Pipeline Script**
-```bash
-#!/bin/bash
-# Smart motion detection with optimal performance
-
-FILE1="$1"
-FILE2="$2"
-
-# Stage 1: Lightning-fast pre-check
-if ./motion-detector "$FILE1" "$FILE2" -f 5 > /dev/null; then
-    echo "File size change detected, analyzing..."
-    
-    # Stage 2: Fast visual confirmation  
-    if ./motion-detector "$FILE1" "$FILE2" -d -g -s 2 > /dev/null; then
-        echo "Visual motion confirmed, full analysis..."
-        
-        # Stage 3: Detailed analysis
-        result=$(./motion-detector "$FILE1" "$FILE2" -g -b --benchmark)
-        echo "Motion detected: $result"
-        exit 1
-    else
-        echo "File size changed but no visual motion (compression difference)"
-        exit 0
-    fi
-else
-    echo "No file size change - no motion"
-    exit 0
-fi
-```
-
-### **Performance Benefits**
-
-| Scenario | Frequency | Time | Speedup |
-|----------|-----------|------|---------|
-| No motion (90% of frames) | 90% | 25 μs | 275x faster |
-| File change, no motion (5%) | 5% | 1.6 ms | 3x faster |
-| Confirmed motion (5%) | 5% | 2.5 ms | Full precision |
-
-**Overall speedup**: ~200x for typical video surveillance scenarios
 
 ## 🛠 Advanced Configuration
 
@@ -284,12 +249,6 @@ fi
 
 # If motion detected, use higher quality
 ./motion-detector cam_old.jpg cam_new.jpg -g -s 2 -t 25 -m 1.0
-```
-
-### **For Content Analysis**
-```bash
-# High precision detection
-./motion-detector frame1.jpg frame2.jpg -b -t 10 -m 0.1 -v
 ```
 
 ### **For Real-time Processing**
@@ -303,133 +262,28 @@ fi
 ./motion-detector prev.jpg curr.jpg -f 10
 ```
 
-## 🔍 Implementation Details
+### **For Raspberry Pi**
+```bash
+# Recommended: Fast and reliable
+./motion-detector img1.jpg img2.jpg -s 2 -m 0.5 -g -v
 
-The utility consists of two main components:
-
-1. **`motion_stb_image.h`**: Custom optimized image loader
-   - Based on stb_image but heavily modified for motion detection
-   - Implements DC-only JPEG decoding
-   - SIMD-optimized color space conversion
-   - Buffer management for zero-copy operations
-
-2. **`motion_detector.cpp`**: Motion detection engine
-   - Advanced parameter handling
-   - Multiple processing modes
-   - Comprehensive benchmarking
-   - Error handling and validation
-
-## 📝 Notes
-
-- **File size comparison**: Works with any image format, estimates headers automatically  
-- **JPEG DC-only mode**: Works best with consistent compression settings
-- **3-stage pipeline**: Provides optimal balance of speed and accuracy
-- **Scaling factors**: Higher values trade accuracy for speed
-- **Threshold tuning**: Start with default values and adjust based on results
-- **Buffer reuse**: Most effective when processing video sequences
-- **SIMD support**: Automatically detected and enabled when available
+# Maximum performance on Raspberry Pi
+./motion-detector img1.jpg img2.jpg -s 3 -m 1.0 -g --benchmark
+```
 
 ## 🚨 Troubleshooting
 
 **"Could not load images"**: Check file paths and format support (JPEG/PNG supported)
 
-**"Using standard stb_image"**: Advanced optimizations not available, using fallback (still fast)
-
 **"DC-only mode error"**: Your JPEG files are incompatible (progressive JPEG, etc.)
 - Test with `--dc-strict` first to check compatibility
 - Use `-d` instead for automatic fallback to standard loading
-- Remove DC-only flag entirely if incompatible
 
 **Poor motion detection accuracy**: Try adjusting `-t` threshold or enabling `-b` blur filter
 
+**Segmentation fault**: Update to latest version (fixed large image issues)
+
 **Slow performance**: Ensure `-march=native` compilation and consider using `-s` scaling options
-
-**Permission denied**: Make sure binary is executable: `chmod +x motion-detector*`
-
-## Advanced Features
-
-### File Size Comparison Mode (-f flag)
-
-For ultra-fast pre-screening, the advanced version includes a file size comparison mode that analyzes content size differences (minus headers) in microseconds:
-
-- **~275x faster** than full image analysis (~13μs vs ~2.5ms)
-- **Header-aware comparison** (estimates and subtracts JPEG/PNG headers)
-- **Percentage-based thresholds** (default: 5% difference)
-- **Perfect for video streams** where file size changes indicate motion
-
-```bash
-# Ultra-fast pre-screening (microsecond-level performance)
-./motion-detector frame1.jpg frame2.jpg -f
-
-# Custom threshold for sensitivity
-./motion-detector video1.jpg video2.jpg -f 10 -v
-```
-
-### JPEG DC-Only Mode (-d flag)
-
-For maximum performance when working with JPEG images, the advanced version includes a specialized JPEG DC-only decoder that extracts only the DC coefficients from 8x8 DCT blocks. This provides:
-
-- **~2.5x faster loading** compared to standard JPEG decoding
-- **Better motion detection accuracy** by ignoring compression artifacts
-- **Lower memory usage** during processing
-- **Maintains detection quality** for motion analysis
-
-**⚠️ Important: Test compatibility first!**
-```bash
-# Always test your JPEG files before production use:
-./motion-detector sample1.jpg sample2.jpg --dc-strict
-
-# If compatible, use -d for speed. If not, omit -d flag.
-```
-
-#### Performance Comparison
-
-| Mode | Total Time | Speed | Speedup | Use Case |
-|------|------------|-------|---------|----------|
-| **File Size (-f)** | **~13 μs** | **77K files/s** | **275x** | **Ultra-fast pre-screening** |
-| DC-only (-d) | 0.8ms | 731 MP/s | 3x | Real-time video analysis |
-| Standard | 2.5ms | 614 MP/s | 1x | High accuracy needed |
-| DC + Scale (-d -s 2) | ~0.4ms | >1000 MP/s | 6x | Fast surveillance |
-
-#### How DC-Only Works
-
-The JPEG DC-only decoder:
-1. Parses JPEG headers (SOI, SOF, DHT, DQT, SOS)
-2. Extracts only DC coefficients from Huffman streams
-3. Bypasses AC coefficient decoding (90% of JPEG data)
-4. Upsamples DC blocks to approximate full resolution
-5. Provides 8x8 pixel averages perfect for motion detection
-
-This is particularly effective for:
-- **Video surveillance** where speed > pixel-perfect accuracy
-- **Motion triggers** in security systems
-- **Real-time processing** on embedded devices
-- **Batch processing** of large video archives
-
-#### Recommended Usage Patterns
-
-**🚄 Ultra-Fast Video Pipeline (3-stage approach):**
-```bash
-# Stage 1: Lightning-fast pre-check (13μs)
-if ./motion-detector frame1.jpg frame2.jpg -f > /dev/null; then
-    # Stage 2: Fast confirmation (0.8ms)  
-    if ./motion-detector frame1.jpg frame2.jpg -d -g -s 2 > /dev/null; then
-        # Stage 3: High-precision analysis (2.5ms)
-        ./motion-detector frame1.jpg frame2.jpg -g -b --benchmark
-    fi
-fi
-```
-
-**📊 Performance Benefits:**
-- **No motion detected**: 13μs (275x faster than full analysis)
-- **File size change only**: 0.8ms (3x faster than full analysis)  
-- **Confirmed motion**: 2.5ms (full precision when needed)
-
-**🎯 Real-world Applications:**
-- **Security cameras**: Process 77,000 frame pairs/second for pre-screening
-- **Video archives**: Skip 90%+ of unchanged frames instantly
-- **IoT devices**: Minimize CPU usage and battery consumption
-- **Network cameras**: Reduce bandwidth by 99%+ on static scenes
 
 ## 🌟 Real-World Applications
 
@@ -442,8 +296,6 @@ while read frame_pair; do
         ./motion-detector ${frame_pair} -d --benchmark >> motion_log.txt
     fi
 done < camera_feed.list
-
-# Expected performance: 20,000+ frame pairs/second on modest hardware
 ```
 
 ### **IoT / Embedded Systems**  
@@ -455,19 +307,6 @@ done < camera_feed.list
 # Processing: 77,000 file comparisons/second vs 400 full analyses/second
 ```
 
-### **Video Archive Processing**
-```bash
-# Batch process thousands of video frames
-find ./video_frames -name "*.jpg" | sort | while read -r frame; do
-    next_frame=$(echo "$frame" | sed 's/frame_\([0-9]*\)/frame_\1+1/' | bc)
-    if ./motion-detector "$frame" "$next_frame" -f 2 > /dev/null; then
-        echo "Motion at $frame" >> motion_timestamps.txt
-    fi
-done
-
-# Process 10,000+ frame pairs in seconds instead of hours
-```
-
 ### **Content Creation & Analysis**
 ```bash
 # Detect scene changes in video editing
@@ -477,106 +316,30 @@ done
 ./motion-detector play_start.jpg play_end.jpg -d -g -s 2 --benchmark
 ```
 
-## 📊 Benchmark Results Summary
-
-### **Test Environment**
-- **Hardware**: Apple Silicon M2, 16GB RAM
-- **Test Images**: 320x240 JPEG files (~1-9KB)
-- **Compiler**: g++ with -O3 -march=native optimizations
-
-### **Performance Results**
-
-| Feature | Time | Throughput | Memory | Accuracy |
-|---------|------|------------|--------|----------|
-| **File Size (-f)** | **25 μs** | **80K files/s** | **1KB** | **Perfect for size changes** |
-| DC-Only (-d) | 1.6 ms | 625 files/s | 2MB | 95%+ motion accuracy |
-| Standard | 1.4 ms | 714 files/s | 6MB | 99% accuracy (with false positives) |
-| 3-Stage Pipeline | 25μs-3ms | 333-80K/s | 1KB-6MB | Adaptive precision |
-
-### **Speed Improvements vs Standard Libraries**
-- **File operations**: 275x faster than image loading
-- **JPEG DC-only**: 3x faster than full JPEG decode  
-- **Pipeline efficiency**: 200x average speedup for video streams
-- **Memory usage**: 6000x less for file size mode (1KB vs 6MB)
-
-### **Quality Comparison**
-- **File size mode**: 100% accurate for detecting file changes
-- **DC-only mode**: 0% false positives on identical files (vs 33% for standard)
-- **Combined pipeline**: Maintains quality while achieving massive speedups
-
-## 🧪 Demo Scripts
-
-The repository includes several demonstration scripts in the `tests/` directory:
-
-### **`tests/benchmark_filesize.sh`**
-Comprehensive performance comparison between file size, DC-only, and standard modes:
-```bash
-cd tests && ./benchmark_filesize.sh
-```
-Shows real-world speed differences and use case recommendations.
-
-### **`tests/example_pipeline.sh`**  
-Interactive demonstration of the 3-stage smart pipeline:
-```bash
-cd tests && ./example_pipeline.sh
-```
-Includes timing measurements and automatic stage selection.
-
-### **`tests/benchmark_dc.sh`**
-JPEG DC-only mode performance analysis and optimization combinations:
-```bash
-cd tests && ./benchmark_dc.sh
-```
-Demonstrates all DC-only optimizations and their performance impacts.
-
-### **`tests/test_motion.sh`**
-Basic motion detection testing script:
-```bash
-cd tests && ./test_motion.sh
-```
-Creates test images and runs various motion detection scenarios.
-
 ## 🚀 Quick Start
 
 1. **Clone and build**:
    ```bash
    git clone <repository>
-   cd IMAGEDIFF_LITE
+   cd motion-detector
    make advanced
    ```
 
-2. **Generate test images**:
+2. **Run tests**:
    ```bash
    cd tests
-   ./create_test_images.sh
+   ./simple_test.sh
+   ./test_motion.sh
    ```
 
-3. **Run performance benchmark**:
+3. **Performance benchmark**:
    ```bash
    ./benchmark_filesize.sh
    ```
 
-4. **Test smart pipeline**:
-   ```bash
-   ./example_pipeline.sh
-   ```
-
 **Expected first-run results**: 80,000+ file comparisons/second for ultra-fast pre-screening!
 
-## 🎯 Optimal Parameters for Security Cameras
-
-### For 640x480 Images (Typical Security Cameras)
-
-```bash
-# Recommended: Fast and reliable
-./motion-detector img1.jpg img2.jpg -s 2 -m 0.5 -g -v
-
-# High speed (when DC-only works):
-./motion-detector img1.jpg img2.jpg -s 2 -m 0.5 -g -d -v
-
-# Maximum performance on Raspberry Pi:
-./motion-detector img1.jpg img2.jpg -s 3 -m 1.0 -g --benchmark
-```
+## 🎯 Optimal Parameters for Different Systems
 
 ### Parameter Guidelines
 
@@ -597,8 +360,6 @@ Creates test images and runs various motion detection scenarios.
 - Progressive JPEG files
 - Images created with some graphics software
 - Heavily compressed or unusual JPEG variants
-
-**Recommendation:** Always test DC-only mode with your specific camera files. If it fails, the system automatically falls back to standard loading.
 
 **🔧 Before deploying DC-only mode in production:**
 ```bash

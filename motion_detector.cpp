@@ -34,8 +34,14 @@ struct MotionDetectionParams {
 // Simple 3x3 blur kernel for noise reduction
 void apply_blur_3x3(unsigned char* output, const unsigned char* input, 
                    int width, int height, int channels) {
+    // Safety checks
+    if (!output || !input || width <= 0 || height <= 0 || channels <= 0) {
+        return;
+    }
+    
     // First, copy the entire input to output to handle edges
-    std::memcpy(output, input, width * height * channels);
+    size_t total_size = (size_t)width * height * channels;
+    std::memcpy(output, input, total_size);
     
     // Simple box blur kernel for interior pixels only
     const int kernel_sum = 9;
@@ -46,12 +52,22 @@ void apply_blur_3x3(unsigned char* output, const unsigned char* input,
                 int sum = 0;
                 for (int ky = -1; ky <= 1; ky++) {
                     for (int kx = -1; kx <= 1; kx++) {
-                        int idx = ((y + ky) * width + (x + kx)) * channels + c;
-                        sum += input[idx];
+                        int curr_y = y + ky;
+                        int curr_x = x + kx;
+                        
+                        // Additional safety check
+                        if (curr_y >= 0 && curr_y < height && curr_x >= 0 && curr_x < width) {
+                            size_t idx = ((size_t)curr_y * width + curr_x) * channels + c;
+                            if (idx < total_size) {
+                                sum += input[idx];
+                            }
+                        }
                     }
                 }
-                int out_idx = (y * width + x) * channels + c;
-                output[out_idx] = (unsigned char)(sum / kernel_sum);
+                size_t out_idx = ((size_t)y * width + x) * channels + c;
+                if (out_idx < total_size) {
+                    output[out_idx] = (unsigned char)(sum / kernel_sum);
+                }
             }
         }
     }
@@ -163,11 +179,11 @@ float calculate_motion_advanced(const unsigned char* img1, const unsigned char* 
             // Safety check for array bounds
             if (y >= height || x >= width) continue;
             
-            int base_idx = (y * width + x) * channels;
+            size_t base_idx = ((size_t)y * width + x) * channels;
             
             // Additional safety check for buffer overflow
-            int max_idx = base_idx + channels - 1;
-            int total_size = width * height * channels;
+            size_t max_idx = base_idx + channels - 1;
+            size_t total_size = (size_t)width * height * channels;
             if (max_idx >= total_size) {
                 if (params.verbose) {
                     std::cerr << "Warning: Buffer overflow detected at (" << x << "," << y << "), skipping pixel" << std::endl;
@@ -376,8 +392,10 @@ int main(int argc, char* argv[]) {
     }
     
     // Create separate buffers for each image to avoid cache conflicts
-    motion_buffer_t* buffer1 = motion_stbi_buffer_create(1920 * 1080 * 3); // HD buffer for img1
-    motion_buffer_t* buffer2 = motion_stbi_buffer_create(1920 * 1080 * 3); // HD buffer for img2
+    // Use a reasonable default size, will be reallocated if needed
+    size_t default_buffer_size = 1920 * 1080 * 3; // HD buffer default
+    motion_buffer_t* buffer1 = motion_stbi_buffer_create(default_buffer_size);
+    motion_buffer_t* buffer2 = motion_stbi_buffer_create(default_buffer_size);
     
     if (params.verbose) {
         std::cout << "=== Debug Info ===" << std::endl;
@@ -405,6 +423,8 @@ int main(int argc, char* argv[]) {
         std::cout << "Image 1 loaded: " << (img1 ? "Success" : "Failed") << std::endl;
         if (img1) {
             std::cout << "Image 1 dimensions: " << width1 << "x" << height1 << "x" << channels1 << std::endl;
+            size_t img1_size = (size_t)width1 * height1 * channels1;
+            std::cout << "Image 1 size: " << img1_size << " bytes (" << (img1_size / 1024.0 / 1024.0) << " MB)" << std::endl;
         }
     }
                                              
@@ -415,6 +435,8 @@ int main(int argc, char* argv[]) {
         std::cout << "Image 2 loaded: " << (img2 ? "Success" : "Failed") << std::endl;
         if (img2) {
             std::cout << "Image 2 dimensions: " << width2 << "x" << height2 << "x" << channels2 << std::endl;
+            size_t img2_size = (size_t)width2 * height2 * channels2;
+            std::cout << "Image 2 size: " << img2_size << " bytes (" << (img2_size / 1024.0 / 1024.0) << " MB)" << std::endl;
         }
     }
     
@@ -467,11 +489,28 @@ int main(int argc, char* argv[]) {
     unsigned char* proc_img2 = img2;
     
     if (params.enable_blur) {
-        blurred1.resize(width1 * height1 * channels1);
-        blurred2.resize(width2 * height2 * channels2);
+        size_t blur_buffer_size = (size_t)width1 * height1 * channels1;
+        if (params.verbose) {
+            std::cout << "Applying blur filter..." << std::endl;
+            std::cout << "Blur buffer size: " << blur_buffer_size << " bytes (" << (blur_buffer_size / 1024.0 / 1024.0) << " MB)" << std::endl;
+        }
         
+        blurred1.resize(blur_buffer_size);
+        blurred2.resize(blur_buffer_size);
+        
+        if (params.verbose) {
+            std::cout << "Blur buffers allocated, applying blur to image 1..." << std::endl;
+        }
         apply_blur_3x3(blurred1.data(), img1, width1, height1, channels1);
+        
+        if (params.verbose) {
+            std::cout << "Applying blur to image 2..." << std::endl;
+        }
         apply_blur_3x3(blurred2.data(), img2, width2, height2, channels2);
+        
+        if (params.verbose) {
+            std::cout << "Blur processing completed successfully" << std::endl;
+        }
         
         proc_img1 = blurred1.data();
         proc_img2 = blurred2.data();
