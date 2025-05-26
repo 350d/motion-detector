@@ -15,6 +15,7 @@
 #include <chrono>
 #include <vector>
 #include <sys/stat.h>
+#include <iomanip>
 
 struct MotionDetectionParams {
     int pixel_threshold = 25;      // Pixel difference threshold (0-255)
@@ -33,7 +34,10 @@ struct MotionDetectionParams {
 // Simple 3x3 blur kernel for noise reduction
 void apply_blur_3x3(unsigned char* output, const unsigned char* input, 
                    int width, int height, int channels) {
-    // Simple box blur kernel
+    // First, copy the entire input to output to handle edges
+    std::memcpy(output, input, width * height * channels);
+    
+    // Simple box blur kernel for interior pixels only
     const int kernel_sum = 9;
     
     for (int y = 1; y < height - 1; y++) {
@@ -122,7 +126,7 @@ float compare_file_sizes(const char* file1, const char* file2, const MotionDetec
         std::cout << "=== File Size Analysis ===" << std::endl;
         std::cout << "File 1: " << size1 << " bytes (" << content1 << " content after ~" << header1 << " header)" << std::endl;
         std::cout << "File 2: " << size2 << " bytes (" << content2 << " content after ~" << header2 << " header)" << std::endl;
-        std::cout << "Content size difference: " << diff_pct << "%" << std::endl;
+        std::cout << "Content size difference: " << std::fixed << std::setprecision(2) << diff_pct << "%" << std::endl;
     }
     
     return diff_pct;
@@ -264,11 +268,21 @@ void print_usage(const char* program_name) {
     std::cout << "  " << program_name << " frame1.jpg frame2.jpg -t 30 -s 2\n";
     std::cout << "  " << program_name << " prev.jpg curr.jpg -g -b -m 2.5\n";
     std::cout << "  " << program_name << " vid1.jpg vid2.jpg -d -s 4 --benchmark\n";
-    std::cout << "  " << program_name << " cam1.jpg cam2.jpg -f 10 -v  # Fast file size check\n\n";
+    std::cout << "  " << program_name << " cam1.jpg cam2.jpg -f 10 -v  # Fast file size check\n";
+    std::cout << "  " << program_name << " img1.jpg img2.jpg -g -s 4 && echo \"Motion!\"\n";
+    std::cout << "  result=$(" << program_name << " img1.jpg img2.jpg -g); echo \"Status: $result\"\n\n";
     std::cout << "Fast Mode (-f):\n";
     std::cout << "  Compares file sizes (minus headers) for ultra-fast pre-screening.\n";
     std::cout << "  Useful for video streams where file size changes indicate motion.\n";
     std::cout << "  Speed: ~1 microsecond vs ~1 millisecond for full analysis.\n\n";
+    std::cout << "Output:\n";
+    std::cout << "  Default mode: Outputs 1 (motion detected) or 0 (no motion)\n";
+    std::cout << "  Verbose mode (-v): Detailed statistics and percentages\n\n";
+    std::cout << "Script Integration:\n";
+    std::cout << "  Check exit codes: $? in bash (0=no motion, 1=motion, 2=error)\n";
+    std::cout << "  Capture output: result=$(./motion-detector img1.jpg img2.jpg)\n";
+    std::cout << "  Silent mode: Use default mode (no -v) for clean 1/0 output\n";
+    std::cout << "  Example: if [ $? -eq 1 ]; then echo \"Motion detected!\"; fi\n\n";
     std::cout << "Exit codes:\n";
     std::cout << "  0: No motion detected\n";
     std::cout << "  1: Motion detected\n";
@@ -344,11 +358,12 @@ int main(int argc, char* argv[]) {
         // Output results
         if (params.verbose) {
             std::cout << "=== File Size Comparison Results ===" << std::endl;
-            std::cout << "Content size difference: " << size_diff << "%" << std::endl;
-            std::cout << "Size threshold: " << params.file_size_threshold << "%" << std::endl;
+            std::cout << "Content size difference: " << std::fixed << std::setprecision(2) << size_diff << "%" << std::endl;
+            std::cout << "Size threshold: " << std::fixed << std::setprecision(2) << params.file_size_threshold << "%" << std::endl;
             std::cout << "Result: " << (size_motion_detected ? "SIZE_CHANGE" : "NO_SIZE_CHANGE") << std::endl;
         } else {
-            std::cout << size_diff << std::endl;
+            // In non-verbose mode, output only 1 (size change detected) or 0 (no size change)
+            std::cout << (size_motion_detected ? 1 : 0) << std::endl;
         }
         
         if (params.benchmark) {
@@ -482,15 +497,16 @@ int main(int argc, char* argv[]) {
         std::cout << "Parameters:" << std::endl;
         std::cout << "  Pixel threshold: " << params.pixel_threshold << std::endl;
         std::cout << "  Scale factor: " << params.scale_factor << std::endl;
-        std::cout << "  Motion threshold: " << params.motion_threshold << "%" << std::endl;
+        std::cout << "  Motion threshold: " << std::fixed << std::setprecision(2) << params.motion_threshold << "%" << std::endl;
         std::cout << "  Grayscale: " << (params.use_grayscale ? "Yes" : "No") << std::endl;
         std::cout << "  Blur filter: " << (params.enable_blur ? "Yes" : "No") << std::endl;
         std::cout << "  DC-only mode: " << (params.dc_only_mode ? "Yes" : "No") << std::endl;
         std::cout << "  File size check: " << (params.file_size_check ? "Yes" : "No") << std::endl;
-        std::cout << "Motion detected: " << motion_percentage << "%" << std::endl;
+        std::cout << "Motion detected: " << std::fixed << std::setprecision(2) << motion_percentage << "%" << std::endl;
         std::cout << "Result: " << (motion_detected ? "MOTION" : "NO_MOTION") << std::endl;
     } else {
-        std::cout << motion_percentage << std::endl;
+        // In non-verbose mode, output only 1 (motion detected) or 0 (no motion)
+        std::cout << (motion_detected ? 1 : 0) << std::endl;
     }
     
     if (params.benchmark) {
