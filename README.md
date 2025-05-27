@@ -411,26 +411,59 @@ done < camera_feed.list
 
 ## 🚀 Quick Start
 
-1. **Clone and build**:
-   ```bash
-   git clone <repository>
-   cd motion-detector
-   make advanced
-   ```
+### Local Build
+```bash
+# Simple version (maximum compatibility)
+make simple
 
-2. **Run tests**:
-   ```bash
-   cd tests
-   ./simple_test.sh
-   ./test_motion.sh
-   ```
+# Advanced version (optimized)
+make advanced
 
-3. **Performance benchmark**:
-   ```bash
-   ./benchmark_filesize.sh
-   ```
+# Static version (portable, no dependencies)
+make static
 
-**Expected first-run results**: 80,000+ file comparisons/second for ultra-fast pre-screening!
+# Clean build artifacts
+make clean
+```
+
+### Cross-Compilation for ARM
+The project includes GitHub Actions workflow for automatic cross-compilation to ARM platforms:
+
+- **Raspberry Pi Zero/Zero W** (ARMv6 soft-float)
+- **Raspberry Pi 3/4** (ARMv7 hard-float) 
+- **ARM64/AArch64** (64-bit ARM)
+
+Each platform gets **three versions**:
+- **Simple**: Maximum compatibility, standard performance
+- **Advanced**: Platform-optimized with specific CPU flags
+- **Static**: Fully portable, no dependencies, **recommended for deployment**
+
+Download pre-compiled binaries from [GitHub Actions artifacts](../../actions).
+
+## 📦 Build Versions
+
+### Simple Version (`motion-detector-simple`)
+- **Compatibility**: Works on all systems
+- **Dependencies**: Standard system libraries
+- **Performance**: Good baseline performance
+- **Use case**: Development, testing, maximum compatibility
+
+### Advanced Version (`motion-detector-advanced`)
+- **Compatibility**: Platform-specific optimizations
+- **Dependencies**: Standard system libraries
+- **Performance**: Best performance for target platform
+- **Optimizations**: 
+  - Pi Zero: `-ftree-vectorize`
+  - Pi 3/4: `-ftree-vectorize -ffast-math`
+  - ARM64: `-ftree-vectorize -ffast-math`
+- **Use case**: Production on known hardware
+
+### Static Version (`motion-detector-static`) ⭐ **Recommended**
+- **Compatibility**: Fully portable, no external dependencies
+- **Dependencies**: None (all libraries statically linked)
+- **Performance**: Good performance with maximum portability
+- **File size**: Larger than dynamic versions
+- **Use case**: **Production deployment, distribution, embedded systems**
 
 ## 🎯 Optimal Parameters for Different Systems
 
