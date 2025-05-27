@@ -21,9 +21,13 @@ jobs:
         echo "::notice title=🛠️ Environment Setup::Setting up ARMv6 cross-compilation toolchain"
         sudo apt-get update
         sudo apt-get install -y \
+          gcc-arm-linux-gnueabi \
+          g++-arm-linux-gnueabi \
           gcc-arm-linux-gnueabihf \
           g++-arm-linux-gnueabihf \
           libc6-dev-armhf-cross \
+          libc6-armel-cross \
+          libc6-dev-armel-cross \
           build-essential \
           cmake \
           pkg-config
@@ -31,15 +35,15 @@ jobs:
     - name: 🎯 Configure Cross-Compilation
       run: |
         echo "::notice title=⚙️ Configuration::Setting up ARMv6 softfp compiler flags"
-        export CC=arm-linux-gnueabihf-gcc
-        export CXX=arm-linux-gnueabihf-g++
-        export AR=arm-linux-gnueabihf-ar
-        export STRIP=arm-linux-gnueabihf-strip
+        export CC=arm-linux-gnueabi-gcc
+        export CXX=arm-linux-gnueabi-g++
+        export AR=arm-linux-gnueabi-ar
+        export STRIP=arm-linux-gnueabi-strip
         
-        # Pi Zero specific flags (ARMv6 + hard-float ABI for compatibility)
-        export CFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=hard -O2"
-        export CXXFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=hard -O2 -std=c++11"
-        export LDFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=hard"
+        # Pi Zero specific flags (ARMv6 + soft-float ABI - Pi Zero requirement)
+        export CFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2"
+        export CXXFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2 -std=c++11"
+        export LDFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp"
         
         echo "CC=$CC" >> $GITHUB_ENV
         echo "CXX=$CXX" >> $GITHUB_ENV

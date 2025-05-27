@@ -20,9 +20,9 @@ jobs:
           # Raspberry Pi Zero/Zero W (ARMv6)
           - name: "Pi Zero"
             arch: "armv6"
-            cc: "arm-linux-gnueabihf-gcc"
-            cxx: "arm-linux-gnueabihf-g++"
-            cflags: "-march=armv6 -mfpu=vfp -mfloat-abi=hard -O2"
+            cc: "arm-linux-gnueabi-gcc"
+            cxx: "arm-linux-gnueabi-g++"
+            cflags: "-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2"
             target: "pi-zero"
             
           # Raspberry Pi 3/4 (ARMv7)
@@ -57,9 +57,13 @@ jobs:
             libc6-dev-arm64-cross
         else
           sudo apt-get install -y \
+            gcc-arm-linux-gnueabi \
+            g++-arm-linux-gnueabi \
             gcc-arm-linux-gnueabihf \
             g++-arm-linux-gnueabihf \
-            libc6-dev-armhf-cross
+            libc6-dev-armhf-cross \
+            libc6-armel-cross \
+            libc6-dev-armel-cross
         fi
         
         sudo apt-get install -y build-essential cmake pkg-config
@@ -76,6 +80,8 @@ jobs:
         # Set correct strip command based on architecture
         if [ "${{ matrix.config.arch }}" = "aarch64" ]; then
           echo "STRIP=aarch64-linux-gnu-strip" >> $GITHUB_ENV
+        elif [ "${{ matrix.config.arch }}" = "armv6" ]; then
+          echo "STRIP=arm-linux-gnueabi-strip" >> $GITHUB_ENV
         else
           echo "STRIP=arm-linux-gnueabihf-strip" >> $GITHUB_ENV
         fi
