@@ -10,7 +10,7 @@ on:
 
 jobs:
   cross-compile-arm:
-    name: "🔧 ARM Cross-Compile (${{ matrix.config.name }})"
+    name: "⚙️ ${{ matrix.config.name }}"
     runs-on: ubuntu-latest
     
     strategy:
