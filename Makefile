@@ -15,32 +15,60 @@ SOURCE = motion_detector.cpp
 SOURCE_SIMPLE = motion_detector_simple.cpp
 
 # Architecture detection for optimization flags
-ARCH := $(shell uname -m)
-ADVANCED_FLAGS = -march=native
-
-# x86/x64 specific optimizations
-ifeq ($(ARCH),x86_64)
-    ADVANCED_FLAGS += -msse2 -mavx2
-endif
-ifeq ($(ARCH),i386)
-    ADVANCED_FLAGS += -msse2
-endif
-ifeq ($(ARCH),i686)
-    ADVANCED_FLAGS += -msse2
+# First check if we're cross-compiling by looking at CC/CXX variables
+ifeq ($(origin CC), environment)
+    COMPILER_NAME := $(notdir $(CC))
+else ifeq ($(origin CXX), environment)
+    COMPILER_NAME := $(notdir $(CXX))
+else
+    COMPILER_NAME := $(notdir $(CXX))
 endif
 
-# ARM specific optimizations (Raspberry Pi, etc.)
-ifneq ($(filter arm% aarch64,$(ARCH)),)
-    # Try to enable NEON if available, fallback gracefully
-    ifeq ($(shell grep -q neon /proc/cpuinfo 2>/dev/null && echo yes),yes)
-        ADVANCED_FLAGS += -mfpu=neon
+# Detect target architecture from compiler name or system
+ADVANCED_FLAGS = 
+
+# Cross-compilation detection
+ifneq ($(filter arm-linux-gnueabi%,$(COMPILER_NAME)),)
+    # ARMv6 soft-float (Pi Zero)
+    TARGET_ARCH = armv6-soft
+    ADVANCED_FLAGS = -ftree-vectorize
+else ifneq ($(filter arm-linux-gnueabihf%,$(COMPILER_NAME)),)
+    # ARMv7 hard-float (Pi 3/4)
+    TARGET_ARCH = armv7-hard
+    ADVANCED_FLAGS = -ftree-vectorize -ffast-math
+else ifneq ($(filter aarch64-linux-gnu%,$(COMPILER_NAME)),)
+    # ARM64/AArch64
+    TARGET_ARCH = aarch64
+    ADVANCED_FLAGS = -ftree-vectorize -ffast-math
+else
+    # Native compilation - detect from system
+    ARCH := $(shell uname -m)
+    TARGET_ARCH = $(ARCH)
+    
+    # x86/x64 specific optimizations for native builds
+    ifeq ($(ARCH),x86_64)
+        ADVANCED_FLAGS = -march=native -msse2 -mavx2
     endif
-    ADVANCED_FLAGS += -ftree-vectorize -ffast-math
-endif
-
-# macOS specific flags for better performance
-ifeq ($(shell uname), Darwin)
-    ADVANCED_FLAGS += -framework Accelerate
+    ifeq ($(ARCH),i386)
+        ADVANCED_FLAGS = -march=native -msse2
+    endif
+    ifeq ($(ARCH),i686)
+        ADVANCED_FLAGS = -march=native -msse2
+    endif
+    
+    # ARM specific optimizations for native builds
+    ifneq ($(filter arm% aarch64,$(ARCH)),)
+        ADVANCED_FLAGS = -march=native -ftree-vectorize -ffast-math
+        # Try to enable NEON if available, fallback gracefully
+        ifeq ($(shell grep -q neon /proc/cpuinfo 2>/dev/null && echo yes),yes)
+            ADVANCED_FLAGS += -mfpu=neon
+        endif
+    endif
+    
+    # macOS specific flags for better performance
+    ifeq ($(shell uname), Darwin)
+        ADVANCED_FLAGS += -framework Accelerate
+    endif
 endif
 
 # Check if running in GitHub Actions
@@ -66,6 +94,7 @@ $(TARGET_SIMPLE): $(SOURCE_SIMPLE) stb_image.h
 	@echo "  ✓ Header file: stb_image.h"
 	@echo "Configuring compiler..."
 	@echo "  ✓ Compiler: $(CXX)"
+	@echo "  ✓ Target: $(TARGET_ARCH)"
 	@echo "  ✓ Flags: $(CXXFLAGS)"
 	@echo "Compiling source code..."
 	@$(CXX) $(CXXFLAGS) -o $(TARGET_SIMPLE) $(SOURCE_SIMPLE) || (echo "$(ERROR_PREFIX)Simple version compilation failed" && exit 1)
@@ -84,7 +113,8 @@ $(TARGET): $(SOURCE) motion_stb_image.h stb_image.h
 	@echo "  ✓ Custom header: motion_stb_image.h"
 	@echo "  ✓ Standard header: stb_image.h"
 	@echo "Detecting architecture..."
-	@echo "  ✓ Architecture: $(ARCH)"
+	@echo "  ✓ Target architecture: $(TARGET_ARCH)"
+	@echo "  ✓ Compiler: $(COMPILER_NAME)"
 	@echo "Configuring optimizations..."
 	@echo "  ✓ Compiler: $(CXX)"
 	@echo "  ✓ Base flags: $(CXXFLAGS)"
