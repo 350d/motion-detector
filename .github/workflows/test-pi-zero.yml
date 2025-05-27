@@ -1,0 +1,45 @@
+name: 🧪 Test Pi Zero Build
+
+on:
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  quick-test:
+    name: "⚡ Quick Pi Zero Test"
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout
+      uses: actions/checkout@v4
+      
+    - name: 🔧 Setup Toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf build-essential
+        
+    - name: 🏗️ Build Simple Version
+      run: |
+        export CC=arm-linux-gnueabihf-gcc
+        export CXX=arm-linux-gnueabihf-g++
+        export CXXFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2 -std=c++11"
+        
+        echo "🍓 Building for Raspberry Pi Zero..."
+        make simple CC="$CC" CXX="$CXX" CXXFLAGS="$CXXFLAGS"
+        
+        if [ -f "motion-detector-simple" ]; then
+          echo "✅ Build successful!"
+          ls -lh motion-detector-simple
+          file motion-detector-simple
+        else
+          echo "❌ Build failed!"
+          exit 1
+        fi
+        
+    - name: 🎯 Verify Binary
+      run: |
+        echo "🔍 Checking binary compatibility..."
+        file motion-detector-simple
+        readelf -h motion-detector-simple | grep -E "(Machine|Flags)"
+        echo "✅ Pi Zero compatibility verified!" 

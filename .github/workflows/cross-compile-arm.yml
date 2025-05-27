@@ -1,0 +1,283 @@
+name: 🚀 ARM Cross-Compilation Matrix
+
+on:
+  push:
+    branches: [ master, main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  cross-compile-arm:
+    name: "🔧 ARM Cross-Compile (${{ matrix.config.name }})"
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # Raspberry Pi Zero/Zero W (ARMv6)
+          - name: "Pi Zero"
+            arch: "armv6"
+            cc: "arm-linux-gnueabihf-gcc"
+            cxx: "arm-linux-gnueabihf-g++"
+            cflags: "-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2"
+            target: "pi-zero"
+            
+          # Raspberry Pi 3/4 (ARMv7)
+          - name: "Pi 3/4"
+            arch: "armv7"
+            cc: "arm-linux-gnueabihf-gcc"
+            cxx: "arm-linux-gnueabihf-g++"
+            cflags: "-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -O2"
+            target: "pi3-4"
+            
+          # ARM64/AArch64 (Pi 4 64-bit, etc.)
+          - name: "ARM64"
+            arch: "aarch64"
+            cc: "aarch64-linux-gnu-gcc"
+            cxx: "aarch64-linux-gnu-g++"
+            cflags: "-march=armv8-a -O2"
+            target: "arm64"
+    
+    steps:
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: 🛠️ Install Cross-Compilation Tools
+      run: |
+        echo "::notice title=🔧 Setup::Installing ${{ matrix.config.name }} toolchain"
+        sudo apt-get update
+        
+        if [ "${{ matrix.config.arch }}" = "aarch64" ]; then
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross
+        else
+          sudo apt-get install -y \
+            gcc-arm-linux-gnueabihf \
+            g++-arm-linux-gnueabihf \
+            libc6-dev-armhf-cross
+        fi
+        
+        sudo apt-get install -y build-essential cmake pkg-config
+        
+    - name: ⚙️ Configure Build Environment
+      run: |
+        echo "::notice title=⚙️ Configuration::Setting up ${{ matrix.config.name }} build environment"
+        
+        # Set compiler variables
+        echo "CC=${{ matrix.config.cc }}" >> $GITHUB_ENV
+        echo "CXX=${{ matrix.config.cxx }}" >> $GITHUB_ENV
+        echo "AR=${{ matrix.config.cc }}-ar" >> $GITHUB_ENV
+        echo "STRIP=${{ matrix.config.cc }}-strip" >> $GITHUB_ENV
+        
+        # Set compilation flags
+        echo "CFLAGS=${{ matrix.config.cflags }}" >> $GITHUB_ENV
+        echo "CXXFLAGS=${{ matrix.config.cflags }} -std=c++11" >> $GITHUB_ENV
+        echo "LDFLAGS=${{ matrix.config.cflags }}" >> $GITHUB_ENV
+        
+        # Display configuration
+        echo "🎯 Target: ${{ matrix.config.name }} (${{ matrix.config.arch }})"
+        echo "🔧 Compiler: ${{ matrix.config.cc }}"
+        echo "🏗️ Flags: ${{ matrix.config.cflags }}"
+        
+    - name: 🏗️ Build Simple Version
+      run: |
+        echo "::notice title=🔨 Build::Building simple version for ${{ matrix.config.name }}"
+        
+        # Clean previous builds
+        make clean || true
+        
+        # Build simple version
+        if make simple \
+          CC="${{ matrix.config.cc }}" \
+          CXX="${{ matrix.config.cxx }}" \
+          CXXFLAGS="${{ matrix.config.cflags }} -std=c++11" \
+          LDFLAGS="${{ matrix.config.cflags }}"; then
+          
+          echo "✅ Simple version built successfully"
+          ls -lh motion-detector-simple
+          file motion-detector-simple
+        else
+          echo "❌ Simple version build failed"
+          exit 1
+        fi
+        
+    - name: 🚀 Build Advanced Version
+      continue-on-error: true
+      run: |
+        echo "::notice title=🎯 Advanced Build::Attempting optimized build for ${{ matrix.config.name }}"
+        
+        # Add optimization flags based on architecture
+        EXTRA_FLAGS=""
+        case "${{ matrix.config.arch }}" in
+          "armv6")
+            EXTRA_FLAGS="-ftree-vectorize"
+            ;;
+          "armv7")
+            EXTRA_FLAGS="-ftree-vectorize -ffast-math -mfpu=neon"
+            ;;
+          "aarch64")
+            EXTRA_FLAGS="-ftree-vectorize -ffast-math"
+            ;;
+        esac
+        
+        if make advanced \
+          CC="${{ matrix.config.cc }}" \
+          CXX="${{ matrix.config.cxx }}" \
+          CXXFLAGS="${{ matrix.config.cflags }} -std=c++11 $EXTRA_FLAGS" \
+          LDFLAGS="${{ matrix.config.cflags }}"; then
+          
+          echo "✅ Advanced version built successfully"
+          ls -lh motion-detector
+          file motion-detector
+        else
+          echo "⚠️ Advanced version build failed - continuing with simple version"
+        fi
+        
+    - name: 🧪 Verify Binary Compatibility
+      run: |
+        echo "::notice title=🔍 Verification::Checking ${{ matrix.config.name }} binary compatibility"
+        
+        # Check simple version
+        if [ -f "motion-detector-simple" ]; then
+          echo "📋 Simple version info:"
+          file motion-detector-simple
+          readelf -h motion-detector-simple | grep -E "(Machine|Flags|Class)" || true
+          echo ""
+        fi
+        
+        # Check advanced version
+        if [ -f "motion-detector" ]; then
+          echo "📋 Advanced version info:"
+          file motion-detector
+          readelf -h motion-detector | grep -E "(Machine|Flags|Class)" || true
+          echo ""
+        fi
+        
+    - name: 📦 Create Release Package
+      run: |
+        echo "::notice title=📦 Packaging::Creating ${{ matrix.config.name }} release package"
+        
+        # Create target directory
+        PKG_DIR="motion-detector-${{ matrix.config.target }}"
+        mkdir -p "$PKG_DIR"
+        
+        # Strip and copy binaries
+        if [ -f "motion-detector-simple" ]; then
+          ${{ matrix.config.cc }}-strip motion-detector-simple
+          cp motion-detector-simple "$PKG_DIR/"
+          echo "✅ Simple version packaged and stripped"
+        fi
+        
+        if [ -f "motion-detector" ]; then
+          ${{ matrix.config.cc }}-strip motion-detector
+          cp motion-detector "$PKG_DIR/motion-detector-advanced"
+          echo "✅ Advanced version packaged and stripped"
+        fi
+        
+        # Copy documentation and scripts
+        cp README.md "$PKG_DIR/" || true
+        cp build_for_pi.sh "$PKG_DIR/" || true
+        
+        # Create target-specific installation script
+        cat > "$PKG_DIR/install.sh" << EOF
+        #!/bin/bash
+        echo "🎯 Motion Detector - ${{ matrix.config.name }} Installation"
+        echo "======================================================"
+        
+        # Architecture check
+        EXPECTED_ARCH="${{ matrix.config.arch }}"
+        CURRENT_ARCH=\$(uname -m)
+        
+        echo "Current architecture: \$CURRENT_ARCH"
+        echo "Package architecture: \$EXPECTED_ARCH"
+        
+        # Install binaries
+        if [ -f "motion-detector-simple" ]; then
+          sudo cp motion-detector-simple /usr/local/bin/motion-detector
+          sudo chmod +x /usr/local/bin/motion-detector
+          echo "✅ Installed motion-detector-simple to /usr/local/bin/motion-detector"
+        fi
+        
+        if [ -f "motion-detector-advanced" ]; then
+          sudo cp motion-detector-advanced /usr/local/bin/motion-detector-advanced
+          sudo chmod +x /usr/local/bin/motion-detector-advanced
+          echo "✅ Installed motion-detector-advanced to /usr/local/bin/motion-detector-advanced"
+        fi
+        
+        echo ""
+        echo "🚀 Installation complete!"
+        echo "Test with: motion-detector img1.jpg img2.jpg -g -s 2 -v"
+        EOF
+        
+        chmod +x "$PKG_DIR/install.sh"
+        
+        # Create target-specific README
+        cat > "$PKG_DIR/README-${{ matrix.config.target }}.md" << EOF
+        # Motion Detector - ${{ matrix.config.name }} Build
+        
+        ## Target Information
+        - **Platform**: ${{ matrix.config.name }}
+        - **Architecture**: ${{ matrix.config.arch }}
+        - **Compiler**: ${{ matrix.config.cc }}
+        - **Optimization**: ${{ matrix.config.cflags }}
+        
+        ## Installation
+        \`\`\`bash
+        ./install.sh
+        \`\`\`
+        
+        ## Usage
+        \`\`\`bash
+        # Basic usage
+        motion-detector image1.jpg image2.jpg -v
+        
+        # Optimized for ${{ matrix.config.name }}
+        motion-detector image1.jpg image2.jpg -g -s 2 --benchmark
+        \`\`\`
+        
+        ## Performance Notes
+        - Simple version: Maximum compatibility
+        - Advanced version: Optimized for ${{ matrix.config.name }} (if available)
+        EOF
+        
+        # Show package contents
+        echo "📦 Package contents for ${{ matrix.config.name }}:"
+        ls -la "$PKG_DIR"
+        
+        # Create tarball
+        tar -czf "$PKG_DIR.tar.gz" "$PKG_DIR"
+        echo "✅ Created $PKG_DIR.tar.gz"
+        
+    - name: 📤 Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: motion-detector-${{ matrix.config.target }}
+        path: motion-detector-${{ matrix.config.target }}.tar.gz
+        retention-days: 30
+        
+    - name: 🎉 Build Summary
+      run: |
+        echo "::notice title=✅ Success::${{ matrix.config.name }} build completed successfully!"
+        
+        echo "📊 Build Summary for ${{ matrix.config.name }}:"
+        echo "=============================================="
+        
+        if [ -f "motion-detector-${{ matrix.config.target }}/motion-detector-simple" ]; then
+          SIZE=$(ls -lh motion-detector-${{ matrix.config.target }}/motion-detector-simple | awk '{print $5}')
+          echo "✅ Simple version: $SIZE"
+        fi
+        
+        if [ -f "motion-detector-${{ matrix.config.target }}/motion-detector-advanced" ]; then
+          SIZE=$(ls -lh motion-detector-${{ matrix.config.target }}/motion-detector-advanced | awk '{print $5}')
+          echo "✅ Advanced version: $SIZE"
+        fi
+        
+        echo ""
+        echo "🎯 Target: ${{ matrix.config.name }} (${{ matrix.config.arch }})"
+        echo "📦 Package: motion-detector-${{ matrix.config.target }}.tar.gz"
+        echo "🚀 Ready for deployment!" 

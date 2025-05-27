@@ -31,7 +31,7 @@ struct MotionDetectionParams {
     bool benchmark = false;        // Show timing information
 };
 
-// Simple 3x3 blur kernel for noise reduction
+// Simple 3x3 blur kernel for noise reduction - safe version for large images
 void apply_blur_3x3(unsigned char* output, const unsigned char* input, 
                    int width, int height, int channels) {
     // Safety checks
@@ -39,35 +39,52 @@ void apply_blur_3x3(unsigned char* output, const unsigned char* input,
         return;
     }
     
-    // First, copy the entire input to output to handle edges
-    size_t total_size = (size_t)width * height * channels;
-    std::memcpy(output, input, total_size);
+    // For very large images, skip blur processing entirely to avoid crashes
+    if (width > 4096 || height > 4096) {
+        // Just copy input to output without blur for safety
+        size_t total_size = (size_t)width * (size_t)height * (size_t)channels;
+        size_t chunk_size = 1024 * 1024; // 1MB chunks
+        for (size_t offset = 0; offset < total_size; offset += chunk_size) {
+            size_t copy_size = (total_size - offset > chunk_size) ? chunk_size : (total_size - offset);
+            std::memcpy(output + offset, input + offset, copy_size);
+        }
+        return;
+    }
     
-    // Simple box blur kernel for interior pixels only
-    const int kernel_sum = 9;
+    // Calculate total size safely
+    size_t row_size = (size_t)width * (size_t)channels;
     
+    // Copy input to output first (handle edges by keeping original values)
+    for (int y = 0; y < height; y++) {
+        size_t row_offset = (size_t)y * row_size;
+        std::memcpy(output + row_offset, input + row_offset, row_size);
+    }
+    
+    // Apply blur only to interior pixels (1 pixel border remains unblurred)
     for (int y = 1; y < height - 1; y++) {
         for (int x = 1; x < width - 1; x++) {
             for (int c = 0; c < channels; c++) {
+                // Calculate 3x3 average manually for safety
                 int sum = 0;
-                for (int ky = -1; ky <= 1; ky++) {
-                    for (int kx = -1; kx <= 1; kx++) {
-                        int curr_y = y + ky;
-                        int curr_x = x + kx;
-                        
-                        // Additional safety check
-                        if (curr_y >= 0 && curr_y < height && curr_x >= 0 && curr_x < width) {
-                            size_t idx = ((size_t)curr_y * width + curr_x) * channels + c;
-                            if (idx < total_size) {
-                                sum += input[idx];
-                            }
-                        }
-                    }
-                }
-                size_t out_idx = ((size_t)y * width + x) * channels + c;
-                if (out_idx < total_size) {
-                    output[out_idx] = (unsigned char)(sum / kernel_sum);
-                }
+                
+                // Top row
+                sum += input[((size_t)(y-1) * (size_t)width + (size_t)(x-1)) * (size_t)channels + (size_t)c];
+                sum += input[((size_t)(y-1) * (size_t)width + (size_t)x) * (size_t)channels + (size_t)c];
+                sum += input[((size_t)(y-1) * (size_t)width + (size_t)(x+1)) * (size_t)channels + (size_t)c];
+                
+                // Middle row
+                sum += input[((size_t)y * (size_t)width + (size_t)(x-1)) * (size_t)channels + (size_t)c];
+                sum += input[((size_t)y * (size_t)width + (size_t)x) * (size_t)channels + (size_t)c];
+                sum += input[((size_t)y * (size_t)width + (size_t)(x+1)) * (size_t)channels + (size_t)c];
+                
+                // Bottom row
+                sum += input[((size_t)(y+1) * (size_t)width + (size_t)(x-1)) * (size_t)channels + (size_t)c];
+                sum += input[((size_t)(y+1) * (size_t)width + (size_t)x) * (size_t)channels + (size_t)c];
+                sum += input[((size_t)(y+1) * (size_t)width + (size_t)(x+1)) * (size_t)channels + (size_t)c];
+                
+                // Store result
+                output[((size_t)y * (size_t)width + (size_t)x) * (size_t)channels + (size_t)c] = 
+                    (unsigned char)(sum / 9);
             }
         }
     }
@@ -174,16 +191,18 @@ float calculate_motion_advanced(const unsigned char* img1, const unsigned char* 
     // Determine step size based on scale factor
     int step = params.scale_factor;
     
+    // Calculate total image size for bounds checking
+    size_t total_size = (size_t)width * (size_t)height * (size_t)channels;
+    
     for (int y = 0; y < height; y += step) {
         for (int x = 0; x < width; x += step) {
             // Safety check for array bounds
             if (y >= height || x >= width) continue;
             
-            size_t base_idx = ((size_t)y * width + x) * channels;
+            size_t base_idx = ((size_t)y * (size_t)width + (size_t)x) * (size_t)channels;
             
             // Additional safety check for buffer overflow
-            size_t max_idx = base_idx + channels - 1;
-            size_t total_size = (size_t)width * height * channels;
+            size_t max_idx = base_idx + (size_t)channels - 1;
             if (max_idx >= total_size) {
                 if (params.verbose) {
                     std::cerr << "Warning: Buffer overflow detected at (" << x << "," << y << "), skipping pixel" << std::endl;
@@ -489,31 +508,63 @@ int main(int argc, char* argv[]) {
     unsigned char* proc_img2 = img2;
     
     if (params.enable_blur) {
-        size_t blur_buffer_size = (size_t)width1 * height1 * channels1;
-        if (params.verbose) {
-            std::cout << "Applying blur filter..." << std::endl;
-            std::cout << "Blur buffer size: " << blur_buffer_size << " bytes (" << (blur_buffer_size / 1024.0 / 1024.0) << " MB)" << std::endl;
+        size_t blur_buffer_size = (size_t)width1 * (size_t)height1 * (size_t)channels1;
+        
+        // Check if we should skip blur for safety (HD images are at the limit)
+        if (width1 > 4096 || height1 > 4096) {
+            if (params.verbose) {
+                std::cout << "Warning: Image dimensions (" << width1 << "x" << height1 << 
+                    ") too large for safe blur processing, skipping blur filter" << std::endl;
+            }
+            // Skip blur entirely for very large images
+        } else {
+            if (params.verbose) {
+                std::cout << "Applying blur filter..." << std::endl;
+                std::cout << "Blur buffer size: " << blur_buffer_size << " bytes (" << (blur_buffer_size / 1024.0 / 1024.0) << " MB)" << std::endl;
+            }
+            
+            try {
+                // Pre-allocate with zeroes for safety
+                blurred1.assign(blur_buffer_size, 0);
+                blurred2.assign(blur_buffer_size, 0);
+        
+                if (params.verbose) {
+                    std::cout << "Blur buffers allocated and zeroed" << std::endl;
+                    std::cout << "Applying blur to image 1..." << std::endl;
+                }
+                
+                apply_blur_3x3(blurred1.data(), img1, width1, height1, channels1);
+                
+                if (params.verbose) {
+                    std::cout << "Image 1 blur completed, applying blur to image 2..." << std::endl;
+                }
+                
+                apply_blur_3x3(blurred2.data(), img2, width2, height2, channels2);
+                
+                if (params.verbose) {
+                    std::cout << "Blur processing completed successfully" << std::endl;
+                }
+                proc_img1 = blurred1.data();
+                proc_img2 = blurred2.data();
+                
+            } catch (const std::exception& e) {
+                if (params.verbose) {
+                    std::cerr << "Exception during blur processing: " << e.what() << std::endl;
+                    std::cerr << "Falling back to non-blurred images" << std::endl;
+                }
+                // Fall back to non-blurred images
+                proc_img1 = img1;
+                proc_img2 = img2;
+            } catch (...) {
+                if (params.verbose) {
+                    std::cerr << "Unknown exception during blur processing" << std::endl;
+                    std::cerr << "Falling back to non-blurred images" << std::endl;
+                }
+                // Fall back to non-blurred images
+                proc_img1 = img1;
+                proc_img2 = img2;
+            }
         }
-        
-        blurred1.resize(blur_buffer_size);
-        blurred2.resize(blur_buffer_size);
-        
-        if (params.verbose) {
-            std::cout << "Blur buffers allocated, applying blur to image 1..." << std::endl;
-        }
-        apply_blur_3x3(blurred1.data(), img1, width1, height1, channels1);
-        
-        if (params.verbose) {
-            std::cout << "Applying blur to image 2..." << std::endl;
-        }
-        apply_blur_3x3(blurred2.data(), img2, width2, height2, channels2);
-        
-        if (params.verbose) {
-            std::cout << "Blur processing completed successfully" << std::endl;
-        }
-        
-        proc_img1 = blurred1.data();
-        proc_img2 = blurred2.data();
     }
     
     auto motion_start = std::chrono::high_resolution_clock::now();

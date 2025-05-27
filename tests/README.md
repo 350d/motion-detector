@@ -12,6 +12,7 @@ tests/
 │   └── ...                   # Various test images
 ├── simple_test.sh            # Quick functionality test
 ├── test_large_images.sh      # HD image tests (segfault detection)
+├── test_segfault_fix.sh      # Specific segfault fix verification
 ├── test_motion.sh           # Comprehensive motion detection tests
 ├── create_large_test_images.py # Generate large test images
 ├── benchmark_filesize.sh    # File size comparison performance
@@ -31,6 +32,9 @@ tests/
 
 # Test large images (HD resolution)
 ./test_large_images.sh
+
+# Test segfault fix with HD images
+./test_segfault_fix.sh
 ```
 
 ## 📋 Test Scripts Overview
@@ -42,6 +46,7 @@ tests/
 | `simple_test.sh` | Quick test | Basic functionality check with existing images |
 | `test_motion.sh` | Full suite | Comprehensive motion detection testing |
 | `test_large_images.sh` | HD tests | Tests 1920x1080 images, checks for segfaults |
+| `test_segfault_fix.sh` | Segfault fix | Verifies buffer overflow fixes for HD images |
 
 ### Performance Benchmarks
 
@@ -73,6 +78,13 @@ tests/
 - **Tests**: HD images with/without blur filter
 - **Expected**: No segmentation faults (exit code 139)
 - **Runtime**: ~10 seconds (includes timeout)
+
+### `test_segfault_fix.sh`
+- **Purpose**: Verify buffer overflow fixes for segfault issues
+- **Images used**: 1920x1080 HD images (generated + user images if available)
+- **Tests**: Exact parameters that previously caused segfaults (-s 4 -m 4 -g -b -v)
+- **Expected**: Successful execution without exit code 139
+- **Runtime**: ~5 seconds per image pair
 
 ### `test_motion.sh`
 - **Purpose**: Comprehensive motion detection testing

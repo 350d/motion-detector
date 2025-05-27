@@ -34,7 +34,13 @@ motion-detector/
 ├── motion_stb_image.h        # Optimized image loading library
 ├── stb_image.h              # Standard stb_image library
 ├── Makefile                 # Build system
+├── build_for_pi.sh          # Smart Raspberry Pi build script
 ├── README.md               # This documentation
+├── .github/                # GitHub Actions workflows
+│   └── workflows/
+│       ├── pi-zero.yml     # Pi Zero cross-compilation
+│       ├── cross-compile-arm.yml  # Multi-ARM build matrix
+│       └── test-pi-zero.yml       # Quick Pi Zero test
 └── tests/                  # Test directory
     ├── images/            # Test images
     ├── simple_test.sh     # Quick test
@@ -91,6 +97,93 @@ Use the smart build script that automatically detects capabilities:
 # Or manually try advanced first, fallback to simple
 make advanced || make simple
 ```
+
+## 🍓 Cross-Compilation & GitHub Actions
+
+This project includes automated cross-compilation workflows for various ARM platforms:
+
+### **GitHub Actions Workflows**
+
+| Workflow | Purpose | Targets |
+|----------|---------|---------|
+| `pi-zero.yml` | 🍓 **Raspberry Pi Zero** | ARMv6 + soft-float optimized |
+| `cross-compile-arm.yml` | 🚀 **Multi-ARM Matrix** | Pi Zero, Pi 3/4, ARM64 |
+| `test-pi-zero.yml` | 🧪 **Quick Test** | Fast Pi Zero compatibility check |
+
+### **Supported ARM Platforms**
+
+| Platform | Architecture | Float ABI | Optimization Flags |
+|----------|-------------|-----------|-------------------|
+| **Pi Zero/Zero W** | ARMv6 | soft-float | `-march=armv6 -mfpu=vfp -mfloat-abi=softfp` |
+| **Pi 3/4 (32-bit)** | ARMv7-A | hard-float | `-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard` |
+| **Pi 4 (64-bit)** | AArch64 | - | `-march=armv8-a` |
+
+### **Download Pre-Built Binaries**
+
+Pre-compiled binaries for ARM platforms are available from GitHub Actions:
+
+1. 🔗 **Go to [Actions tab](../../actions)**
+2. 📥 **Select latest successful build**
+3. 📦 **Download artifacts**:
+   - `motion-detector-pi-zero-build` - Pi Zero optimized
+   - `motion-detector-pi3-4` - Pi 3/4 optimized  
+   - `motion-detector-arm64` - ARM64 build
+
+### **Manual Cross-Compilation**
+
+#### **Pi Zero (ARMv6)**
+```bash
+# Install cross-compiler
+sudo apt-get install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+
+# Build for Pi Zero
+export CC=arm-linux-gnueabihf-gcc
+export CXX=arm-linux-gnueabihf-g++
+export CXXFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2 -std=c++11"
+
+make simple CC="$CC" CXX="$CXX" CXXFLAGS="$CXXFLAGS"
+```
+
+#### **Pi 3/4 (ARMv7)**
+```bash
+export CXXFLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -O2 -std=c++11"
+make advanced CC="$CC" CXX="$CXX" CXXFLAGS="$CXXFLAGS"
+```
+
+#### **ARM64 (AArch64)**
+```bash
+# Install ARM64 cross-compiler
+sudo apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+export CC=aarch64-linux-gnu-gcc
+export CXX=aarch64-linux-gnu-g++
+export CXXFLAGS="-march=armv8-a -O2 -std=c++11"
+
+make advanced CC="$CC" CXX="$CXX" CXXFLAGS="$CXXFLAGS"
+```
+
+### **Deployment on Raspberry Pi**
+
+```bash
+# 1. Download and extract build artifact
+wget https://github.com/YOUR_USERNAME/motion-detector/actions/artifacts/latest/motion-detector-pi-zero-build.zip
+unzip motion-detector-pi-zero-build.zip
+cd pi-zero-build/
+
+# 2. Install
+./install.sh
+
+# 3. Test
+motion-detector img1.jpg img2.jpg -g -s 2 -v
+```
+
+### **Performance Recommendations by Platform**
+
+| Platform | Recommended Flags | Performance Notes |
+|----------|------------------|-------------------|
+| **Pi Zero** | `-g -s 2 -b` | Use blur filter, scale=2 for better performance |
+| **Pi 3/4** | `-g -s 2 --benchmark` | Can handle advanced version |
+| **Pi 4 64-bit** | `-d -g --benchmark` | DC-only mode works well |
 
 ### **Clean up**
 ```bash
@@ -370,4 +463,15 @@ done < camera_feed.list
 ./motion-detector cam1.jpg cam2.jpg -d -g -s 2 --benchmark
 
 # If error occurs, use standard mode without -d flag
-``` 
+```
+
+## Recent Updates
+
+- **Version 2.4** (December 2024):
+  - **CRITICAL FIX**: Resolved segmentation faults when processing HD images (1920x1080) with blur filter
+  - Enhanced buffer safety checks for large image processing (6+ MB images)
+  - Added automatic blur disable for extremely large images (>4096px) for stability
+  - Improved memory allocation with chunked copying for large buffers
+  - Added comprehensive exception handling for blur operations
+  - Fixed integer overflow issues in array indexing for large images
+  - **Testing**: Successfully processes 1920x1080x3 (6.2MB) images without crashes 

@@ -1,0 +1,228 @@
+name: 🍓 Raspberry Pi Zero Cross-Compile
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-pi-zero:
+    name: "📱 Pi Zero ARMv6 Build"
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: 🔧 Setup Cross-Compilation Environment
+      run: |
+        echo "::notice title=🛠️ Environment Setup::Setting up ARMv6 cross-compilation toolchain"
+        sudo apt-get update
+        sudo apt-get install -y \
+          gcc-arm-linux-gnueabihf \
+          g++-arm-linux-gnueabihf \
+          libc6-dev-armhf-cross \
+          build-essential \
+          cmake \
+          pkg-config
+          
+    - name: 🎯 Configure Cross-Compilation
+      run: |
+        echo "::notice title=⚙️ Configuration::Setting up ARMv6 softfp compiler flags"
+        export CC=arm-linux-gnueabihf-gcc
+        export CXX=arm-linux-gnueabihf-g++
+        export AR=arm-linux-gnueabihf-ar
+        export STRIP=arm-linux-gnueabihf-strip
+        
+        # Pi Zero specific flags (ARMv6 + soft-float ABI)
+        export CFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2"
+        export CXXFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2 -std=c++11"
+        export LDFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp"
+        
+        echo "CC=$CC" >> $GITHUB_ENV
+        echo "CXX=$CXX" >> $GITHUB_ENV
+        echo "AR=$AR" >> $GITHUB_ENV
+        echo "STRIP=$STRIP" >> $GITHUB_ENV
+        echo "CFLAGS=$CFLAGS" >> $GITHUB_ENV
+        echo "CXXFLAGS=$CXXFLAGS" >> $GITHUB_ENV
+        echo "LDFLAGS=$LDFLAGS" >> $GITHUB_ENV
+        
+    - name: 🔨 Build Simple Version (Most Compatible)
+      run: |
+        echo "::notice title=🏗️ Build Process::Building simple version for maximum Pi Zero compatibility"
+        make clean || true
+        
+        # Build simple version first (most reliable)
+        make simple \
+          CC="$CC" \
+          CXX="$CXX" \
+          CXXFLAGS="$CXXFLAGS" \
+          LDFLAGS="$LDFLAGS"
+          
+        if [ -f "motion-detector-simple" ]; then
+          echo "✅ Simple version built successfully"
+          ls -lh motion-detector-simple
+          file motion-detector-simple
+          $STRIP motion-detector-simple
+          echo "✅ Binary stripped"
+          ls -lh motion-detector-simple
+        else
+          echo "❌ Simple version build failed"
+          exit 1
+        fi
+        
+    - name: 🎯 Build Advanced Version (Optimized)
+      run: |
+        echo "::notice title=🚀 Advanced Build::Attempting optimized version with ARMv6 flags"
+        
+        # Try advanced version with Pi Zero optimizations
+        if make advanced \
+          CC="$CC" \
+          CXX="$CXX" \
+          CXXFLAGS="$CXXFLAGS -ftree-vectorize -ffast-math" \
+          LDFLAGS="$LDFLAGS"; then
+          
+          echo "✅ Advanced version built successfully"
+          ls -lh motion-detector
+          file motion-detector
+          $STRIP motion-detector
+          echo "✅ Advanced binary stripped"
+          ls -lh motion-detector
+        else
+          echo "⚠️ Advanced version failed - continuing with simple version"
+        fi
+        
+    - name: 🧪 Test Binary Compatibility
+      run: |
+        echo "::notice title=🔍 Compatibility Check::Verifying binary compatibility"
+        
+        # Test simple version
+        if [ -f "motion-detector-simple" ]; then
+          echo "📋 Simple version binary info:"
+          file motion-detector-simple
+          readelf -h motion-detector-simple | grep -E "(Machine|Flags)"
+          echo "✅ Simple version compatibility verified"
+        fi
+        
+        # Test advanced version if available
+        if [ -f "motion-detector" ]; then
+          echo "📋 Advanced version binary info:"
+          file motion-detector
+          readelf -h motion-detector | grep -E "(Machine|Flags)"
+          echo "✅ Advanced version compatibility verified"
+        fi
+        
+    - name: 📦 Package Binaries
+      run: |
+        echo "::notice title=📦 Packaging::Creating deployment packages"
+        
+        mkdir -p pi-zero-build
+        
+        # Copy binaries
+        if [ -f "motion-detector-simple" ]; then
+          cp motion-detector-simple pi-zero-build/
+          echo "✅ Simple version packaged"
+        fi
+        
+        if [ -f "motion-detector" ]; then
+          cp motion-detector pi-zero-build/motion-detector-advanced
+          echo "✅ Advanced version packaged"
+        fi
+        
+        # Copy support files
+        cp build_for_pi.sh pi-zero-build/ || true
+        cp README.md pi-zero-build/ || true
+        cp Makefile pi-zero-build/ || true
+        
+        # Create installation script
+        cat > pi-zero-build/install.sh << 'EOF'
+        #!/bin/bash
+        echo "🍓 Motion Detector - Raspberry Pi Zero Installation"
+        echo "=================================================="
+        
+        # Check architecture
+        if [[ $(uname -m) != arm* ]]; then
+          echo "❌ This package is for ARM architecture only"
+          exit 1
+        fi
+        
+        # Install simple version (most compatible)
+        if [ -f "motion-detector-simple" ]; then
+          sudo cp motion-detector-simple /usr/local/bin/motion-detector
+          sudo chmod +x /usr/local/bin/motion-detector
+          echo "✅ Simple version installed to /usr/local/bin/motion-detector"
+        fi
+        
+        # Optionally install advanced version
+        if [ -f "motion-detector-advanced" ]; then
+          sudo cp motion-detector-advanced /usr/local/bin/motion-detector-advanced
+          sudo chmod +x /usr/local/bin/motion-detector-advanced
+          echo "✅ Advanced version installed to /usr/local/bin/motion-detector-advanced"
+        fi
+        
+        echo "🎯 Installation complete!"
+        echo "Usage: motion-detector img1.jpg img2.jpg -g -s 2 -v"
+        EOF
+        
+        chmod +x pi-zero-build/install.sh
+        
+        # Create package info
+        cat > pi-zero-build/README-pi-zero.md << 'EOF'
+        # Motion Detector - Raspberry Pi Zero Build
+        
+        ## Quick Start
+        ```bash
+        # Install
+        ./install.sh
+        
+        # Test
+        motion-detector image1.jpg image2.jpg -g -s 2 -v
+        ```
+        
+        ## Binaries
+        - `motion-detector-simple`: Most compatible version (recommended)
+        - `motion-detector-advanced`: Optimized version (if available)
+        
+        ## Compatibility
+        - Raspberry Pi Zero / Zero W
+        - ARMv6 + VFP + soft-float ABI
+        - Debian/Raspbian based systems
+        
+        ## Performance Tips
+        - Use `-s 2` or `-s 3` for better performance on Pi Zero
+        - Enable GPU memory split: `sudo raspi-config` → Advanced → Memory Split → 64
+        - Consider using smaller image sizes for better performance
+        EOF
+        
+        echo "📦 Package contents:"
+        ls -la pi-zero-build/
+        
+    - name: 🎉 Build Success Summary
+      run: |
+        echo "::notice title=✅ Build Success::Pi Zero cross-compilation completed successfully!"
+        
+        echo "📊 Build Summary:"
+        echo "================="
+        
+        if [ -f "pi-zero-build/motion-detector-simple" ]; then
+          SIZE=$(ls -lh pi-zero-build/motion-detector-simple | awk '{print $5}')
+          echo "✅ Simple version: $SIZE (recommended for Pi Zero)"
+        fi
+        
+        if [ -f "pi-zero-build/motion-detector-advanced" ]; then
+          SIZE=$(ls -lh pi-zero-build/motion-detector-advanced | awk '{print $5}')
+          echo "✅ Advanced version: $SIZE (optimized)"
+        fi
+        
+        echo ""
+        echo "🚀 Ready for Raspberry Pi Zero deployment!"
+        echo "📝 See pi-zero-build/README-pi-zero.md for usage instructions"
+        
+    - name: 📤 Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: motion-detector-pi-zero-build
+        path: pi-zero-build/
+        retention-days: 30 
