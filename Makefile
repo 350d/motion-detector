@@ -108,6 +108,30 @@ $(TARGET_SIMPLE): $(SOURCE_SIMPLE) stb_image.h
 # Advanced version with custom optimizations (may not compile on all systems)
 advanced: $(TARGET)
 
+# Static version with all libraries linked statically
+static: $(TARGET)-static
+
+$(TARGET)-static: $(SOURCE) motion_stb_image.h stb_image.h
+	@echo "$(NOTICE_PREFIX)Building Motion Detector (Static Version)"
+	@echo "Checking dependencies..."
+	@echo "  ✓ Source file: $(SOURCE)"
+	@echo "  ✓ Custom header: motion_stb_image.h"
+	@echo "  ✓ Standard header: stb_image.h"
+	@echo "Detecting architecture..."
+	@echo "  ✓ Target architecture: $(TARGET_ARCH)"
+	@echo "  ✓ Compiler: $(COMPILER_NAME)"
+	@echo "Configuring static build..."
+	@echo "  ✓ Compiler: $(CXX)"
+	@echo "  ✓ Base flags: $(CXXFLAGS)"
+	@echo "  ✓ Advanced flags: $(ADVANCED_FLAGS)"
+	@echo "  ✓ Static linking: -static"
+	@echo "Compiling static binary..."
+	@$(CXX) $(CXXFLAGS) $(ADVANCED_FLAGS) -static -o $(TARGET)-static $(SOURCE) || (echo "$(ERROR_PREFIX)Static version compilation failed" && exit 1)
+	@echo "Build complete!"
+	@ls -lh $(TARGET)-static | awk '{print "  ✓ Binary size: " $$5 " (" $$9 ")"}'
+	@echo "$(NOTICE_PREFIX)Static version built successfully!"
+	@echo "Portable usage: ./$(TARGET)-static img1.jpg img2.jpg -g -s 4 -d --benchmark"
+
 $(TARGET): $(SOURCE) motion_stb_image.h stb_image.h
 	@echo "$(NOTICE_PREFIX)Building Motion Detector (Advanced Version)"
 	@echo "Checking dependencies..."
@@ -149,7 +173,7 @@ pi-debug: motion_detector_pi_debug.cpp stb_image.h
 
 clean:
 	@echo "$(NOTICE_PREFIX)Cleaning build artifacts..."
-	@rm -f $(TARGET) $(TARGET_SIMPLE) motion-detector-pi-debug
+	@rm -f $(TARGET) $(TARGET_SIMPLE) $(TARGET)-static motion-detector-pi-debug
 	@echo "$(NOTICE_PREFIX)Clean complete!"
 
 install: $(TARGET_SIMPLE)
@@ -172,4 +196,4 @@ test: $(TARGET_SIMPLE)
 		echo "$(WARNING_PREFIX)No test script found. Run './test_motion.sh' manually."; \
 	fi
 
-.PHONY: all simple advanced clean install install-advanced debug benchmark test pi-debug 
+.PHONY: all simple advanced static clean install install-advanced debug benchmark test pi-debug 

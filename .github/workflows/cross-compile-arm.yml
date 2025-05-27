@@ -143,6 +143,38 @@ jobs:
           echo "⚠️ Advanced version build failed - continuing with simple version"
         fi
         
+    - name: 🔗 Build Static Version
+      continue-on-error: true
+      run: |
+        # Add optimization flags based on architecture
+        EXTRA_FLAGS=""
+        case "${{ matrix.config.arch }}" in
+          "armv6")
+            EXTRA_FLAGS="-ftree-vectorize"
+            ;;
+          "armv7")
+            EXTRA_FLAGS="-ftree-vectorize -ffast-math"
+            ;;
+          "aarch64")
+            EXTRA_FLAGS="-ftree-vectorize -ffast-math"
+            ;;
+        esac
+        
+        if make static \
+          CC="${{ matrix.config.cc }}" \
+          CXX="${{ matrix.config.cxx }}" \
+          CXXFLAGS="${{ matrix.config.cflags }} -std=c++11 $EXTRA_FLAGS" \
+          LDFLAGS="${{ matrix.config.cflags }}"; then
+          
+          echo "✅ Static version built successfully"
+          ls -lh motion-detector-static
+          file motion-detector-static
+          echo "📊 Static binary info:"
+          ldd motion-detector-static 2>&1 || echo "  ✓ Fully static binary (no dynamic dependencies)"
+        else
+          echo "⚠️ Static version build failed - continuing without static version"
+        fi
+        
     - name: 🧪 Verify Binary Compatibility
       run: |
         # Check simple version
@@ -158,6 +190,16 @@ jobs:
           echo "📋 Advanced version info:"
           file motion-detector
           readelf -h motion-detector | grep -E "(Machine|Flags|Class)" || true
+          echo ""
+        fi
+        
+        # Check static version
+        if [ -f "motion-detector-static" ]; then
+          echo "📋 Static version info:"
+          file motion-detector-static
+          readelf -h motion-detector-static | grep -E "(Machine|Flags|Class)" || true
+          echo "📊 Dependencies check:"
+          ldd motion-detector-static 2>&1 || echo "  ✓ No dynamic dependencies (fully static)"
           echo ""
         fi
         
@@ -178,6 +220,12 @@ jobs:
           $STRIP motion-detector
           cp motion-detector "$PKG_DIR/motion-detector-advanced"
           echo "✅ Advanced version packaged and stripped"
+        fi
+        
+        if [ -f "motion-detector-static" ]; then
+          $STRIP motion-detector-static
+          cp motion-detector-static "$PKG_DIR/"
+          echo "✅ Static version packaged and stripped"
         fi
         
         # Copy documentation and scripts
@@ -210,6 +258,12 @@ jobs:
           echo "✅ Installed motion-detector-advanced to /usr/local/bin/motion-detector-advanced"
         fi
         
+        if [ -f "motion-detector-static" ]; then
+          sudo cp motion-detector-static /usr/local/bin/motion-detector-static
+          sudo chmod +x /usr/local/bin/motion-detector-static
+          echo "✅ Installed motion-detector-static to /usr/local/bin/motion-detector-static"
+        fi
+        
         echo ""
         echo "🚀 Installation complete!"
         echo "Test with: motion-detector img1.jpg img2.jpg -g -s 2 -v"
@@ -227,6 +281,24 @@ jobs:
         - **Compiler**: ${{ matrix.config.cc }}
         - **Optimization**: ${{ matrix.config.cflags }}
         
+        ## Available Versions
+        
+        ### Simple Version (motion-detector-simple)
+        - Maximum compatibility
+        - Uses standard libraries
+        - Recommended for most users
+        
+        ### Advanced Version (motion-detector-advanced)
+        - Optimized for ${{ matrix.config.name }}
+        - Platform-specific optimizations
+        - Better performance
+        
+        ### Static Version (motion-detector-static)
+        - **Fully portable** - no dependencies
+        - Can run on any ${{ matrix.config.name }} device
+        - Larger file size but maximum compatibility
+        - **Recommended for deployment**
+        
         ## Installation
         \`\`\`bash
         ./install.sh
@@ -234,16 +306,23 @@ jobs:
         
         ## Usage
         \`\`\`bash
-        # Basic usage
+        # Basic usage (simple version)
         motion-detector image1.jpg image2.jpg -v
         
-        # Optimized for ${{ matrix.config.name }}
-        motion-detector image1.jpg image2.jpg -g -s 2 --benchmark
+        # Optimized for ${{ matrix.config.name }} (advanced version)
+        motion-detector-advanced image1.jpg image2.jpg -g -s 2 --benchmark
+        
+        # Portable static version (works everywhere)
+        motion-detector-static image1.jpg image2.jpg -g -s 2 -v
         \`\`\`
         
         ## Performance Notes
-        - Simple version: Maximum compatibility
-        - Advanced version: Optimized for ${{ matrix.config.name }} (if available)
+        - **Simple**: Maximum compatibility, standard performance
+        - **Advanced**: Platform-optimized, best performance
+        - **Static**: Portable, good performance, no dependencies
+        
+        ## Deployment Recommendation
+        Use **motion-detector-static** for production deployment as it has no external dependencies.
         EOF
         
         # Show package contents
@@ -276,6 +355,11 @@ jobs:
           echo "✅ Advanced version: $SIZE"
         fi
         
+        if [ -f "motion-detector-${{ matrix.config.target }}/motion-detector-static" ]; then
+          SIZE=$(ls -lh motion-detector-${{ matrix.config.target }}/motion-detector-static | awk '{print $5}')
+          echo "✅ Static version: $SIZE (portable)"
+        fi
+        
         echo ""
         echo "🎯 Target: ${{ matrix.config.name }} (${{ matrix.config.arch }})"
         echo "📦 Package: motion-detector-${{ matrix.config.target }}.tar.gz"
@@ -304,6 +388,7 @@ jobs:
         echo "📋 Package contains:"
         echo "   • motion-detector-simple (recommended)"
         echo "   • motion-detector-advanced (if built successfully)"
+        echo "   • motion-detector-static (portable, no dependencies)"
         echo "   • install.sh (automated installer)"
         echo "   • README-${{ matrix.config.target }}.md (platform guide)"
         echo ""
@@ -346,7 +431,7 @@ jobs:
         echo "   💪 ARM64:    motion-detector-arm64.tar.gz"
         echo ""
         echo "📋 Each package contains:"
-        echo "   ✅ Pre-compiled binaries (simple + advanced versions)"
+        echo "   ✅ Pre-compiled binaries (simple + advanced + static versions)"
         echo "   ✅ Automated install script (./install.sh)"
         echo "   ✅ Platform-specific documentation"
         echo "   ✅ Build scripts and Makefile"
@@ -359,7 +444,12 @@ jobs:
         echo "🧪 Test your installation:"
         echo "   motion-detector img1.jpg img2.jpg -g -s 2 -v"
         echo ""
-        echo "💡 Performance tips:"
+        echo "💡 Version recommendations:"
+        echo "   • Simple: Maximum compatibility, standard performance"
+        echo "   • Advanced: Platform-optimized, best performance"  
+        echo "   • Static: Portable, no dependencies, recommended for deployment"
+        echo ""
+        echo "🎯 Performance tips:"
         echo "   • Pi Zero: Use -s 2 or -s 3 for better performance"
         echo "   • Pi 3/4:  Try advanced version with --benchmark"
         echo "   • ARM64:   Use -d flag for DC-only JPEG mode" 
