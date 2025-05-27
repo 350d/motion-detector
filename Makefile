@@ -7,7 +7,9 @@ PURPLE=\033[0;35m
 CYAN=\033[0;36m
 NC=\033[0m # No Color
 
-CXX = g++
+# Compiler settings - use environment variables if available
+CXX ?= g++
+CC ?= gcc
 CXXFLAGS = -O3 -std=c++11 -Wall -Wextra
 TARGET = motion-detector
 TARGET_SIMPLE = motion-detector-simple
@@ -28,14 +30,14 @@ endif
 ADVANCED_FLAGS = 
 
 # Cross-compilation detection
-ifneq ($(filter arm-linux-gnueabi%,$(COMPILER_NAME)),)
-    # ARMv6 soft-float (Pi Zero)
-    TARGET_ARCH = armv6-soft
-    ADVANCED_FLAGS = -ftree-vectorize
-else ifneq ($(filter arm-linux-gnueabihf%,$(COMPILER_NAME)),)
+ifneq ($(filter arm-linux-gnueabihf%,$(COMPILER_NAME)),)
     # ARMv7 hard-float (Pi 3/4)
     TARGET_ARCH = armv7-hard
     ADVANCED_FLAGS = -ftree-vectorize -ffast-math
+else ifneq ($(filter arm-linux-gnueabi%,$(COMPILER_NAME)),)
+    # ARMv6 soft-float (Pi Zero)
+    TARGET_ARCH = armv6-soft
+    ADVANCED_FLAGS = -ftree-vectorize
 else ifneq ($(filter aarch64-linux-gnu%,$(COMPILER_NAME)),)
     # ARM64/AArch64
     TARGET_ARCH = aarch64
