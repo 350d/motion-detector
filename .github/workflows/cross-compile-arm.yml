@@ -47,7 +47,6 @@ jobs:
       
     - name: 🛠️ Install Cross-Compilation Tools
       run: |
-        echo "::notice title=🔧 Setup::Installing ${{ matrix.config.name }} toolchain"
         sudo apt-get update
         
         if [ "${{ matrix.config.arch }}" = "aarch64" ]; then
@@ -70,8 +69,6 @@ jobs:
         
     - name: ⚙️ Configure Build Environment
       run: |
-        echo "::notice title=⚙️ Configuration::Setting up ${{ matrix.config.name }} build environment"
-        
         # Set compiler variables
         echo "CC=${{ matrix.config.cc }}" >> $GITHUB_ENV
         echo "CXX=${{ matrix.config.cxx }}" >> $GITHUB_ENV
@@ -98,8 +95,6 @@ jobs:
         
     - name: 🏗️ Build Simple Version
       run: |
-        echo "::notice title=🔨 Build::Building simple version for ${{ matrix.config.name }}"
-        
         # Clean previous builds
         make clean || true
         
@@ -121,8 +116,6 @@ jobs:
     - name: 🚀 Build Advanced Version
       continue-on-error: true
       run: |
-        echo "::notice title=🎯 Advanced Build::Attempting optimized build for ${{ matrix.config.name }}"
-        
         # Add optimization flags based on architecture
         EXTRA_FLAGS=""
         case "${{ matrix.config.arch }}" in
@@ -130,7 +123,7 @@ jobs:
             EXTRA_FLAGS="-ftree-vectorize"
             ;;
           "armv7")
-            EXTRA_FLAGS="-ftree-vectorize -ffast-math -mfpu=neon"
+            EXTRA_FLAGS="-ftree-vectorize -ffast-math"
             ;;
           "aarch64")
             EXTRA_FLAGS="-ftree-vectorize -ffast-math"
@@ -152,8 +145,6 @@ jobs:
         
     - name: 🧪 Verify Binary Compatibility
       run: |
-        echo "::notice title=🔍 Verification::Checking ${{ matrix.config.name }} binary compatibility"
-        
         # Check simple version
         if [ -f "motion-detector-simple" ]; then
           echo "📋 Simple version info:"
@@ -172,8 +163,6 @@ jobs:
         
     - name: 📦 Create Release Package
       run: |
-        echo "::notice title=📦 Packaging::Creating ${{ matrix.config.name }} release package"
-        
         # Create target directory
         PKG_DIR="motion-detector-${{ matrix.config.target }}"
         mkdir -p "$PKG_DIR"
@@ -274,8 +263,6 @@ jobs:
         
     - name: 🎉 Build Summary
       run: |
-        echo "::notice title=✅ Success::${{ matrix.config.name }} build completed successfully!"
-        
         echo "📊 Build Summary for ${{ matrix.config.name }}:"
         echo "=============================================="
         
@@ -296,8 +283,6 @@ jobs:
         
     - name: 📥 Download Instructions
       run: |
-        echo "::notice title=📥 Download::How to get your compiled binaries"
-        
         echo ""
         echo "🔗 DOWNLOAD LINKS:"
         echo "=================="
@@ -337,8 +322,6 @@ jobs:
     steps:
     - name: 📋 All Artifacts Summary
       run: |
-        echo "::notice title=🎉 Build Complete::All ARM cross-compilation artifacts ready!"
-        
         echo ""
         echo "🚀 MOTION DETECTOR - ARM CROSS-COMPILATION COMPLETE!"
         echo "====================================================="
