@@ -36,10 +36,10 @@ jobs:
         export AR=arm-linux-gnueabihf-ar
         export STRIP=arm-linux-gnueabihf-strip
         
-        # Pi Zero specific flags (ARMv6 + soft-float ABI)
-        export CFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2"
-        export CXXFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2 -std=c++11"
-        export LDFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp"
+        # Pi Zero specific flags (ARMv6 + hard-float ABI for compatibility)
+        export CFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=hard -O2"
+        export CXXFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=hard -O2 -std=c++11"
+        export LDFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=hard"
         
         echo "CC=$CC" >> $GITHUB_ENV
         echo "CXX=$CXX" >> $GITHUB_ENV

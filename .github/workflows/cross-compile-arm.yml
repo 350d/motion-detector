@@ -22,7 +22,7 @@ jobs:
             arch: "armv6"
             cc: "arm-linux-gnueabihf-gcc"
             cxx: "arm-linux-gnueabihf-g++"
-            cflags: "-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2"
+            cflags: "-march=armv6 -mfpu=vfp -mfloat-abi=hard -O2"
             target: "pi-zero"
             
           # Raspberry Pi 3/4 (ARMv7)
