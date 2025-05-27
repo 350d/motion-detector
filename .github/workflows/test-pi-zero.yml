@@ -17,12 +17,17 @@ jobs:
     - name: 🔧 Setup Toolchain
       run: |
         sudo apt-get update
-        sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf build-essential
+        sudo apt-get install -y \
+          gcc-arm-linux-gnueabi \
+          g++-arm-linux-gnueabi \
+          libc6-armel-cross \
+          libc6-dev-armel-cross \
+          build-essential
         
     - name: 🏗️ Build Simple Version
       run: |
-        export CC=arm-linux-gnueabihf-gcc
-        export CXX=arm-linux-gnueabihf-g++
+        export CC=arm-linux-gnueabi-gcc
+        export CXX=arm-linux-gnueabi-g++
         export CXXFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2 -std=c++11"
         
         echo "🍓 Building for Raspberry Pi Zero..."
