@@ -72,7 +72,13 @@ jobs:
         echo "CC=${{ matrix.config.cc }}" >> $GITHUB_ENV
         echo "CXX=${{ matrix.config.cxx }}" >> $GITHUB_ENV
         echo "AR=${{ matrix.config.cc }}-ar" >> $GITHUB_ENV
-        echo "STRIP=${{ matrix.config.cc }}-strip" >> $GITHUB_ENV
+        
+        # Set correct strip command based on architecture
+        if [ "${{ matrix.config.arch }}" = "aarch64" ]; then
+          echo "STRIP=aarch64-linux-gnu-strip" >> $GITHUB_ENV
+        else
+          echo "STRIP=arm-linux-gnueabihf-strip" >> $GITHUB_ENV
+        fi
         
         # Set compilation flags
         echo "CFLAGS=${{ matrix.config.cflags }}" >> $GITHUB_ENV
@@ -168,13 +174,13 @@ jobs:
         
         # Strip and copy binaries
         if [ -f "motion-detector-simple" ]; then
-          ${{ matrix.config.cc }}-strip motion-detector-simple
+          $STRIP motion-detector-simple
           cp motion-detector-simple "$PKG_DIR/"
           echo "✅ Simple version packaged and stripped"
         fi
         
         if [ -f "motion-detector" ]; then
-          ${{ matrix.config.cc }}-strip motion-detector
+          $STRIP motion-detector
           cp motion-detector "$PKG_DIR/motion-detector-advanced"
           echo "✅ Advanced version packaged and stripped"
         fi
