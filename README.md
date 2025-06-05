@@ -205,24 +205,46 @@ This version is specifically optimized for Pi Zero and ARM systems:
 - **JPEG**: Full support with decode-time scaling
 - **Other formats**: Not supported (JPEG focus for Pi Zero optimization)
 
-### Installation
+### Quick Start
+
+```bash
+git clone <repository>
+cd motion-detector
+make install-deps  # Auto-install dependencies
+make               # Build
+./motion-detector image1.jpg image2.jpg
+```
+
+## Installation
 
 **Ubuntu/Debian/Pi Zero:**
 ```bash
-sudo apt update
-sudo apt install libjpeg-turbo8-dev build-essential pkg-config
 git clone <repository>
 cd motion-detector
+
+# Auto-install dependencies
+make install-deps
+
+# Or manual install:
+# sudo apt update
+# sudo apt install libjpeg-turbo8-dev build-essential pkg-config
+
 make
 ./test_pi_zero.sh  # Test compatibility
 ```
 
-**CentOS/RHEL:**
+**CentOS/RHEL/Fedora:**
 ```bash
-sudo yum install libjpeg-turbo-devel gcc-c++ make pkg-config
-# or: sudo dnf install libjpeg-turbo-devel gcc-c++ make pkg-config
 git clone <repository>
 cd motion-detector
+
+# Auto-install dependencies
+make install-deps
+
+# Or manual install:
+# sudo yum install libjpeg-turbo-devel gcc-c++ make pkg-config
+# sudo dnf install libjpeg-turbo-devel gcc-c++ make pkg-config  # Fedora
+
 make
 ```
 
@@ -251,25 +273,44 @@ make JPEG_LIBS="-ljpeg" JPEG_CFLAGS="-I/usr/include"
 
 ### Troubleshooting
 
-**Error: `Package libjpeg was not found`**
+**Quick fix for all dependency issues:**
 ```bash
+# Auto-install dependencies for your system
+make install-deps
+
+# Check if everything is installed correctly
+make check-deps
+```
+
+**Error: `Package libjpeg was not found` or `jpeglib.h: No such file or directory`**
+```bash
+# Step 1: Check what's missing
+make check-deps
+
+# Step 2: Auto-install (recommended)
+make install-deps
+
+# Step 3: Manual install if needed
 # Ubuntu/Debian:
 sudo apt install libjpeg-turbo8-dev pkg-config
 
 # CentOS/RHEL:
 sudo yum install libjpeg-turbo-devel pkg-config
 
+# Fedora:
+sudo dnf install libjpeg-turbo-devel pkg-config
+
 # macOS:
-brew install jpeg-turbo pkg-config
+brew install jpeg-turbo
 ```
 
-**Error: `jpeglib.h: No such file or directory`**
+**Still not working? Manual path override:**
 ```bash
 # Find libjpeg installation:
 find /usr -name "jpeglib.h" 2>/dev/null
 find /opt -name "jpeglib.h" 2>/dev/null
 
-# Then compile with manual path:
+# Compile with manual path:
 make JPEG_CFLAGS="-I/path/to/include" JPEG_LIBS="-ljpeg"
 ```
 
@@ -284,6 +325,8 @@ make JPEG_CFLAGS="-I/path/to/include" JPEG_LIBS="-ljpeg"
 | `make clean` | Clean build artifacts | All |
 | `make install` | Install to system | Linux/macOS |
 | `make test-pi` | Run Pi Zero compatibility tests | All |
+| `make check-deps` | Check if dependencies are installed | All |
+| `make install-deps` | Auto-install dependencies | Linux/macOS |
 
 ### Static Build for Deployment
 
