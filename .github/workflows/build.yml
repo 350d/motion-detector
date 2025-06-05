@@ -7,7 +7,8 @@ on:
     branches: [ main, master ]
 
 jobs:
-  build:
+  build-native:
+    name: Build Native (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -34,30 +35,167 @@ jobs:
           motion-detector-pi-debug
 
   cross-compile-arm:
+    name: Cross-compile ARM (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Raspberry Pi Zero/Zero W (ARMv6 soft-float)
+          - target: "pi-zero"
+            arch: "armv6"
+            cross_compile: "arm-linux-gnueabihf"
+            cflags: "-march=armv6 -mfpu=vfp -mfloat-abi=softfp -O2 -std=c++11"
+            description: "Pi Zero/Zero W"
+            
+          # Raspberry Pi 3/4 32-bit (ARMv7 hard-float)  
+          - target: "pi3-4-32bit"
+            arch: "armv7"
+            cross_compile: "arm-linux-gnueabihf"
+            cflags: "-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -O2 -std=c++11"
+            description: "Pi 3/4 32-bit"
+            
+          # Raspberry Pi 4 64-bit (AArch64)
+          - target: "pi4-64bit" 
+            arch: "aarch64"
+            cross_compile: "aarch64-linux-gnu"
+            cflags: "-march=armv8-a -O2 -std=c++11"
+            description: "Pi 4 64-bit"
+            
+          # Generic ARM (older devices)
+          - target: "arm-generic"
+            arch: "armv6"
+            cross_compile: "arm-linux-gnueabihf"
+            cflags: "-march=armv6 -mfloat-abi=softfp -O2 -std=c++11"
+            description: "Generic ARM"
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install ${{ matrix.target }} cross-compiler
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-${{ matrix.cross_compile }} g++-${{ matrix.cross_compile }}
+    
+    - name: Build for ${{ matrix.description }}
+      run: |
+        echo "Building for ${{ matrix.description }} (${{ matrix.arch }})"
+        echo "Cross-compiler: ${{ matrix.cross_compile }}"
+        echo "CFLAGS: ${{ matrix.cflags }}"
+        
+        # Build main version
+        make clean
+        make CXX="${{ matrix.cross_compile }}-g++" CXXFLAGS="${{ matrix.cflags }}"
+        mv motion-detector motion-detector-${{ matrix.target }}
+        
+        # Build Pi Zero debug version (with conservative flags)
+        make clean  
+        make pi-debug CXX="${{ matrix.cross_compile }}-g++" CXXFLAGS="-Os -g -fno-strict-aliasing -fstack-protector-strong -std=c++11"
+        mv motion-detector-pi-debug motion-detector-pi-debug-${{ matrix.target }}
+        
+        # Create info file
+        echo "Target: ${{ matrix.description }}" > build-info-${{ matrix.target }}.txt
+        echo "Architecture: ${{ matrix.arch }}" >> build-info-${{ matrix.target }}.txt  
+        echo "Cross-compiler: ${{ matrix.cross_compile }}" >> build-info-${{ matrix.target }}.txt
+        echo "CFLAGS: ${{ matrix.cflags }}" >> build-info-${{ matrix.target }}.txt
+        echo "Build date: $(date)" >> build-info-${{ matrix.target }}.txt
+        
+        # Check file info
+        file motion-detector-${{ matrix.target }}
+        file motion-detector-pi-debug-${{ matrix.target }}
+        
+    - name: Create installation script for ${{ matrix.target }}
+      run: |
+        cat > install-${{ matrix.target }}.sh << 'EOF'
+        #!/bin/bash
+        echo "Installing Motion Detector for ${{ matrix.description }}"
+        echo "Target: ${{ matrix.target }}"
+        
+        # Copy binaries
+        sudo cp motion-detector-${{ matrix.target }} /usr/local/bin/motion-detector
+        sudo cp motion-detector-pi-debug-${{ matrix.target }} /usr/local/bin/motion-detector-pi-debug
+        sudo chmod +x /usr/local/bin/motion-detector
+        sudo chmod +x /usr/local/bin/motion-detector-pi-debug
+        
+        echo "Installation complete!"
+        echo "Usage: motion-detector img1.jpg img2.jpg -g -s 2"
+        echo "Debug: motion-detector-pi-debug img1.jpg img2.jpg -v"
+        EOF
+        chmod +x install-${{ matrix.target }}.sh
+        
+    - name: Upload ${{ matrix.target }} artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: motion-detector-${{ matrix.target }}
+        path: |
+          motion-detector-${{ matrix.target }}
+          motion-detector-pi-debug-${{ matrix.target }}
+          build-info-${{ matrix.target }}.txt
+          install-${{ matrix.target }}.sh
+
+  # Special Pi Zero optimized build with extra safety
+  pi-zero-safe:
+    name: Pi Zero Ultra-Safe Build
     runs-on: ubuntu-latest
     
     steps:
     - uses: actions/checkout@v3
     
-    - name: Install ARM cross-compiler
+    - name: Install Pi Zero cross-compiler
       run: |
         sudo apt-get update
         sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
     
-    - name: Build for ARM (Pi Zero/Pi 4)
+    - name: Build Pi Zero ultra-safe version
       run: |
-        make CXX=arm-linux-gnueabihf-g++
-        mv motion-detector motion-detector-arm
+        echo "Building ultra-safe version for Pi Zero with maximum compatibility"
         
-    - name: Build Pi Zero debug version for ARM
-      run: |
-        make pi-debug CXX=arm-linux-gnueabihf-g++
-        mv motion-detector-pi-debug motion-detector-pi-debug-arm
+        # Ultra-conservative flags for Pi Zero
+        SAFE_FLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=softfp -Os -g -fno-strict-aliasing -fstack-protector-strong -fno-aggressive-loop-optimizations -std=c++11"
         
-    - name: Upload ARM binaries
+        make clean
+        make pi-debug CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$SAFE_FLAGS"
+        mv motion-detector-pi-debug motion-detector-pi-zero-ultra-safe
+        
+        # Test build info
+        file motion-detector-pi-zero-ultra-safe
+        arm-linux-gnueabihf-readelf -h motion-detector-pi-zero-ultra-safe
+        
+        # Create deployment package
+        mkdir pi-zero-package
+        cp motion-detector-pi-zero-ultra-safe pi-zero-package/
+        
+        cat > pi-zero-package/README.txt << 'EOF'
+        Pi Zero Ultra-Safe Motion Detector
+        ==================================
+        
+        This version is specially built for Raspberry Pi Zero with maximum safety:
+        - Conservative compilation flags
+        - Segfault protection enabled  
+        - Memory bounds checking
+        - Automatic fallbacks for ARM limitations
+        
+        Installation:
+        1. Copy motion-detector-pi-zero-ultra-safe to Pi Zero
+        2. chmod +x motion-detector-pi-zero-ultra-safe  
+        3. Test: ./motion-detector-pi-zero-ultra-safe --help
+        
+        Recommended usage:
+        ./motion-detector-pi-zero-ultra-safe img1.jpg img2.jpg -g -s 2 -v
+        
+        For troubleshooting segfaults, this version provides detailed error messages.
+        EOF
+        
+        cat > pi-zero-package/install.sh << 'EOF'
+        #!/bin/bash
+        echo "Installing Pi Zero ultra-safe motion detector..."
+        sudo cp motion-detector-pi-zero-ultra-safe /usr/local/bin/motion-detector
+        sudo chmod +x /usr/local/bin/motion-detector
+        echo "Installation complete! Test with: motion-detector --help"
+        EOF
+        chmod +x pi-zero-package/install.sh
+        
+    - name: Upload Pi Zero ultra-safe package
       uses: actions/upload-artifact@v3
       with:
-        name: motion-detector-arm
-        path: |
-          motion-detector-arm
-          motion-detector-pi-debug-arm 
+        name: motion-detector-pi-zero-ultra-safe
+        path: pi-zero-package/ 
