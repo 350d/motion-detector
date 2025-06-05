@@ -66,42 +66,75 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Install cross-compilation tools and libjpeg-turbo
+    - name: Install cross-compilation tools
       run: |
         sudo apt-get update
         # Install cross-compilers
-        sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
         sudo apt-get install -y gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
-        # Install development libraries
-        sudo apt-get install -y libc6-dev-armhf-cross libc6-dev-armel-cross
-        # Install libjpeg-turbo for cross-compilation
-        sudo apt-get install -y libjpeg-turbo8-dev:armhf libjpeg-turbo8-dev:armel || true
-        # Fallback: try to install generic libjpeg
-        sudo apt-get install -y libjpeg-dev:armhf libjpeg-dev:armel || true
+        sudo apt-get install -y libc6-dev-armel-cross
+        # Install build tools
+        sudo apt-get install -y cmake nasm git
+    
+    - name: Download and build libjpeg-turbo for ARMv6
+      run: |
+        echo "Building libjpeg-turbo for ARMv6 (Pi Zero)"
+        
+        # Download libjpeg-turbo
+        git clone https://github.com/libjpeg-turbo/libjpeg-turbo.git
+        cd libjpeg-turbo
+        git checkout 3.0.4  # Use stable version
+        
+        # Create cross-compile build directory
+        mkdir build-armv6
+        cd build-armv6
+        
+        # Configure for ARMv6 soft-float cross-compilation
+        cmake .. \
+          -DCMAKE_SYSTEM_NAME=Linux \
+          -DCMAKE_SYSTEM_PROCESSOR=arm \
+          -DCMAKE_C_COMPILER=arm-linux-gnueabi-gcc \
+          -DCMAKE_CXX_COMPILER=arm-linux-gnueabi-g++ \
+          -DCMAKE_C_FLAGS="-march=armv6 -mfloat-abi=soft" \
+          -DCMAKE_CXX_FLAGS="-march=armv6 -mfloat-abi=soft" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_SHARED=FALSE \
+          -DENABLE_STATIC=TRUE \
+          -DWITH_SIMD=FALSE \
+          -DCMAKE_INSTALL_PREFIX=/opt/libjpeg-turbo-armv6
+        
+        # Build and install
+        make -j$(nproc)
+        sudo make install
+        
+        echo "libjpeg-turbo for ARMv6 installed to /opt/libjpeg-turbo-armv6"
+        ls -la /opt/libjpeg-turbo-armv6/
     
     - name: Build static Pi Zero binary (ARMv6 soft-float)
       run: |
         echo "Building static Pi Zero binary (ARMv6 soft-float)"
         
-        # Try to build with cross-compiler
         export CC=arm-linux-gnueabi-gcc
         export CXX=arm-linux-gnueabi-g++
-        export PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabi/pkgconfig
+        export JPEG_ROOT=/opt/libjpeg-turbo-armv6
         
-        # Build with manual flags as fallback
+        # Build with static libjpeg-turbo
         make clean
         $CXX -std=c++11 -O2 -Wall -Wextra \
              -march=armv6 -mfloat-abi=soft \
              -static -static-libgcc -static-libstdc++ \
+             -I${JPEG_ROOT}/include \
              -o motion-detector-pi-zero-static \
              motion_detector.cpp \
-             -ljpeg -lm || echo "Cross-compilation failed, but continuing..."
+             ${JPEG_ROOT}/lib/libjpeg.a \
+             -lm
         
         # Check if binary was created
         if [ -f motion-detector-pi-zero-static ]; then
           echo "=== Pi Zero binary info ==="
           file motion-detector-pi-zero-static
           ls -lh motion-detector-pi-zero-static
+          echo "=== Dependencies check ==="
+          arm-linux-gnueabi-readelf -d motion-detector-pi-zero-static || echo "Static binary (no dynamic deps)"
         else
           echo "Cross-compilation failed - creating placeholder"
           echo "Cross-compilation failed" > motion-detector-pi-zero-static
@@ -120,12 +153,46 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Install ARM cross-compiler and libjpeg-turbo
+    - name: Install ARM cross-compiler
       run: |
         sudo apt-get update
         sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
         sudo apt-get install -y libc6-dev-armhf-cross
-        sudo apt-get install -y libjpeg-turbo8-dev:armhf || sudo apt-get install -y libjpeg-dev:armhf || true
+        sudo apt-get install -y cmake nasm git
+    
+    - name: Download and build libjpeg-turbo for ARMv7
+      run: |
+        echo "Building libjpeg-turbo for ARMv7 (Pi 3/4)"
+        
+        # Download libjpeg-turbo
+        git clone https://github.com/libjpeg-turbo/libjpeg-turbo.git
+        cd libjpeg-turbo
+        git checkout 3.0.4  # Use stable version
+        
+        # Create cross-compile build directory
+        mkdir build-armv7
+        cd build-armv7
+        
+        # Configure for ARMv7 hard-float cross-compilation
+        cmake .. \
+          -DCMAKE_SYSTEM_NAME=Linux \
+          -DCMAKE_SYSTEM_PROCESSOR=arm \
+          -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
+          -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
+          -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+          -DCMAKE_CXX_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_SHARED=FALSE \
+          -DENABLE_STATIC=TRUE \
+          -DWITH_SIMD=TRUE \
+          -DCMAKE_INSTALL_PREFIX=/opt/libjpeg-turbo-armv7
+        
+        # Build and install
+        make -j$(nproc)
+        sudo make install
+        
+        echo "libjpeg-turbo for ARMv7 installed to /opt/libjpeg-turbo-armv7"
+        ls -la /opt/libjpeg-turbo-armv7/
     
     - name: Build static Pi 3/4 binary (ARMv7 hard-float)
       run: |
@@ -133,22 +200,26 @@ jobs:
         
         export CC=arm-linux-gnueabihf-gcc
         export CXX=arm-linux-gnueabihf-g++
-        export PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig
+        export JPEG_ROOT=/opt/libjpeg-turbo-armv7
         
-        # Build with manual flags as fallback
+        # Build with static libjpeg-turbo
         make clean
         $CXX -std=c++11 -O2 -Wall -Wextra \
              -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard \
              -static -static-libgcc -static-libstdc++ \
+             -I${JPEG_ROOT}/include \
              -o motion-detector-pi3-4-static \
              motion_detector.cpp \
-             -ljpeg -lm || echo "Cross-compilation failed, but continuing..."
+             ${JPEG_ROOT}/lib/libjpeg.a \
+             -lm
         
         # Check if binary was created
         if [ -f motion-detector-pi3-4-static ]; then
           echo "=== Pi 3/4 binary info ==="
           file motion-detector-pi3-4-static
           ls -lh motion-detector-pi3-4-static
+          echo "=== Dependencies check ==="
+          arm-linux-gnueabihf-readelf -d motion-detector-pi3-4-static || echo "Static binary (no dynamic deps)"
         else
           echo "Cross-compilation failed - creating placeholder"
           echo "Cross-compilation failed" > motion-detector-pi3-4-static
@@ -167,12 +238,46 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Install ARM64 cross-compiler and libjpeg-turbo
+    - name: Install ARM64 cross-compiler
       run: |
         sudo apt-get update
         sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
         sudo apt-get install -y libc6-dev-arm64-cross
-        sudo apt-get install -y libjpeg-turbo8-dev:arm64 || sudo apt-get install -y libjpeg-dev:arm64 || true
+        sudo apt-get install -y cmake nasm git
+    
+    - name: Download and build libjpeg-turbo for ARM64
+      run: |
+        echo "Building libjpeg-turbo for ARM64"
+        
+        # Download libjpeg-turbo
+        git clone https://github.com/libjpeg-turbo/libjpeg-turbo.git
+        cd libjpeg-turbo
+        git checkout 3.0.4  # Use stable version
+        
+        # Create cross-compile build directory
+        mkdir build-arm64
+        cd build-arm64
+        
+        # Configure for ARM64 cross-compilation
+        cmake .. \
+          -DCMAKE_SYSTEM_NAME=Linux \
+          -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+          -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+          -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+          -DCMAKE_C_FLAGS="-march=armv8-a" \
+          -DCMAKE_CXX_FLAGS="-march=armv8-a" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_SHARED=FALSE \
+          -DENABLE_STATIC=TRUE \
+          -DWITH_SIMD=TRUE \
+          -DCMAKE_INSTALL_PREFIX=/opt/libjpeg-turbo-arm64
+        
+        # Build and install
+        make -j$(nproc)
+        sudo make install
+        
+        echo "libjpeg-turbo for ARM64 installed to /opt/libjpeg-turbo-arm64"
+        ls -la /opt/libjpeg-turbo-arm64/
     
     - name: Build static ARM64 binary
       run: |
@@ -180,22 +285,26 @@ jobs:
         
         export CC=aarch64-linux-gnu-gcc
         export CXX=aarch64-linux-gnu-g++
-        export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
+        export JPEG_ROOT=/opt/libjpeg-turbo-arm64
         
-        # Build with manual flags as fallback
+        # Build with static libjpeg-turbo
         make clean
         $CXX -std=c++11 -O2 -Wall -Wextra \
              -march=armv8-a \
              -static -static-libgcc -static-libstdc++ \
+             -I${JPEG_ROOT}/include \
              -o motion-detector-arm64-static \
              motion_detector.cpp \
-             -ljpeg -lm || echo "Cross-compilation failed, but continuing..."
+             ${JPEG_ROOT}/lib/libjpeg.a \
+             -lm
         
         # Check if binary was created
         if [ -f motion-detector-arm64-static ]; then
           echo "=== ARM64 binary info ==="
           file motion-detector-arm64-static
           ls -lh motion-detector-arm64-static
+          echo "=== Dependencies check ==="
+          aarch64-linux-gnu-readelf -d motion-detector-arm64-static || echo "Static binary (no dynamic deps)"
         else
           echo "Cross-compilation failed - creating placeholder"
           echo "Cross-compilation failed" > motion-detector-arm64-static
