@@ -46,7 +46,7 @@ make install
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-t <threshold>` | **Pixel sensitivity**: How different pixels must be to count as "changed" (0-255). Lower = more sensitive | 25 |
+| `-t&nbsp;<threshold>` | **Pixel sensitivity**: How different pixels must be to count as "changed" (0-255). Lower = more sensitive | 25 |
 | `-s <scale>` | Process every N-th pixel for speed | 1 |
 | `-m <motion_pct>` | Motion percentage threshold | 1.0 |
 | `-f [threshold]` | Fast file size comparison mode | 5% |
