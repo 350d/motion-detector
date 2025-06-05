@@ -60,7 +60,7 @@ make test-pi
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-t&nbsp;<threshold>` | **Pixel sensitivity**: How different pixels must be to count as "changed" (0-255). Lower = more sensitive | 25 |
+| `-t <threshold>` | **Pixel sensitivity**: How different pixels must be to count as "changed" (0-255). Lower = more sensitive | 25 |
 | `-s <scale>` | **Decode scale factor**: 1=full, 2=half, 4=quarter, 8=eighth (JPEG scaled during decode!) | 1 |
 | `-m <motion_pct>` | Motion percentage threshold | 1.0 |
 | `-f [threshold]` | **File size mode**: Ultra-fast pre-check based on file size changes (threshold as number, default: 5) | 5 |
