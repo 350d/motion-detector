@@ -38,7 +38,15 @@ install: motion-detector
 clean:
 	rm -f motion-detector motion-detector-static motion-detector-pi-debug motion-detector-pi-debug-static motion-detector-debug
 
+# Copy debug files with binary
+debug-package: pi-debug
+	cp motion-detector-pi-debug motion-detector-debug
+	@echo "Debug package ready with:"
+	@echo "  - motion-detector-debug (Pi Zero debug binary)"
+	@echo "  - pi_zero_debug_test.sh (automated test script)"
+	@echo "  - PI_ZERO_SEGFAULT_DEBUG.md (debug guide)"
+
 # Default target
 .DEFAULT_GOAL := motion-detector
 
-.PHONY: clean install static pi-debug pi-debug-static debug 
+.PHONY: clean install static pi-debug pi-debug-static debug debug-package 

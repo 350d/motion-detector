@@ -413,10 +413,15 @@ unsigned char* load_image_optimized(const char* filename, int* width, int* heigh
     #ifdef MOTION_PI_ZERO_DEBUG
     // Pi Zero debug mode: additional safety checks before loading
     if (params.verbose) {
-        std::cout << "Pi Zero debug mode: performing safety checks" << std::endl;
+        std::cout << "Pi Zero debug mode: performing safety checks for " << filename << std::endl;
+        std::cout << "Pi Zero debug: Step 1 - validate file format" << std::endl;
     }
     
     // First validate file format and accessibility
+    if (params.verbose) {
+        std::cout << "Pi Zero debug: Step 2 - calling validate_image_file_pi_zero" << std::endl;
+    }
+    
     if (!validate_image_file_pi_zero(filename, params.verbose)) {
         if (params.verbose) {
             std::cerr << "Pi Zero debug: File validation failed for " << filename << std::endl;
@@ -424,7 +429,15 @@ unsigned char* load_image_optimized(const char* filename, int* width, int* heigh
         return nullptr;
     }
     
+    if (params.verbose) {
+        std::cout << "Pi Zero debug: Step 3 - file validation passed" << std::endl;
+    }
+    
     // Check file existence and basic info
+    if (params.verbose) {
+        std::cout << "Pi Zero debug: Step 4 - calling stbi_info" << std::endl;
+    }
+    
     int test_w, test_h, test_c;
     if (!stbi_info(filename, &test_w, &test_h, &test_c)) {
         if (params.verbose) {
@@ -432,6 +445,10 @@ unsigned char* load_image_optimized(const char* filename, int* width, int* heigh
             std::cerr << "Pi Zero debug: This might indicate corrupted JPEG headers or unsupported format" << std::endl;
         }
         return nullptr;
+    }
+    
+    if (params.verbose) {
+        std::cout << "Pi Zero debug: Step 5 - stbi_info successful" << std::endl;
     }
     
     if (params.verbose) {
@@ -451,11 +468,16 @@ unsigned char* load_image_optimized(const char* filename, int* width, int* heigh
     if (params.verbose) {
         std::cout << "Pi Zero debug: Loading with standard stb_image (" 
                   << (required_memory / 1024 / 1024) << "MB)" << std::endl;
+        std::cout << "Pi Zero debug: Step 6 - calling stbi_load" << std::endl;
     }
     
     // Use only standard stb_image for maximum compatibility
     img = stbi_load(filename, width, height, channels, 
                    params.use_grayscale ? 1 : 0);
+                   
+    if (params.verbose) {
+        std::cout << "Pi Zero debug: Step 7 - stbi_load completed" << std::endl;
+    }
                                   
     if (params.verbose) {
         std::cout << "Pi Zero debug: Load result " << (img ? "success" : "failed") << std::endl;
@@ -647,6 +669,13 @@ int main(int argc, char* argv[]) {
     
     auto start_time = std::chrono::high_resolution_clock::now();
     
+    #ifdef MOTION_PI_ZERO_DEBUG
+    // In Pi Zero debug mode, recommend file size mode as safest option
+    if (params.verbose) {
+        std::cout << "Pi Zero debug: Consider using -f flag for ultra-safe file-size-only comparison" << std::endl;
+    }
+    #endif
+    
     // Fast file size comparison mode
     if (params.file_size_check) {
         auto filesize_start = std::chrono::high_resolution_clock::now();
@@ -694,6 +723,25 @@ int main(int argc, char* argv[]) {
         std::cout << "Loading image 2: " << image2_path << std::endl;
         std::cout << "DC-only mode: " << (params.dc_only_mode ? "Yes" : "No") << std::endl;
         std::cout << "Buffers created: " << (buffer1 && buffer2 ? "Yes" : "No") << std::endl;
+        
+        #ifdef MOTION_PI_ZERO_DEBUG
+        std::cout << "Pi Zero debug: Pre-loading file checks..." << std::endl;
+        
+        // Check file access before any image operations
+        FILE* f1 = fopen(image1_path, "rb");
+        FILE* f2 = fopen(image2_path, "rb");
+        std::cout << "Pi Zero debug: File 1 accessible: " << (f1 ? "Yes" : "No") << std::endl;
+        std::cout << "Pi Zero debug: File 2 accessible: " << (f2 ? "Yes" : "No") << std::endl;
+        if (f1) fclose(f1);
+        if (f2) fclose(f2);
+        
+        if (!f1 || !f2) {
+            std::cerr << "Pi Zero debug: File access failed - cannot proceed" << std::endl;
+            if (buffer1) motion_stbi_buffer_free(buffer1);
+            if (buffer2) motion_stbi_buffer_free(buffer2);
+            return 2;
+        }
+        #endif
     }
     
     // Load images
