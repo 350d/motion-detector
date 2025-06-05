@@ -182,41 +182,55 @@ unsigned char* load_image_safe(const char* filename, int* width, int* height, in
     }
 }
 
-// Simple 3x3 Gaussian blur (in-place)
-void apply_blur_3x3(unsigned char* img, int width, int height, int channels) {
+// Ultra-fast blur: convert to grayscale first, then blur only one channel
+void apply_blur_fast(unsigned char* img, int width, int height, int channels, bool use_rgb) {
     if (!img || width < 3 || height < 3) return;
     
-    // Gaussian 3x3 kernel (normalized)
-    const float kernel[9] = {
-        0.0625f, 0.125f, 0.0625f,
-        0.125f,  0.25f,  0.125f,
-        0.0625f, 0.125f, 0.0625f
-    };
+    if (!use_rgb && channels >= 3) {
+        // Convert to grayscale first, then blur only channel 0
+        for (int i = 0; i < width * height; i++) {
+            int gray = (img[i*3] + img[i*3+1] + img[i*3+2]) / 3;
+            img[i*3] = img[i*3+1] = img[i*3+2] = gray;
+        }
+    }
     
-    // Create temporary buffer for one row
-    std::vector<unsigned char> temp_row(width * channels);
-    std::vector<unsigned char> temp_img(width * height * channels);
+    // Now blur only the first channel (or all if RGB mode)
+    int blur_channels = use_rgb ? channels : 1;
+    std::vector<unsigned char> temp_row(width * blur_channels);
     
-    // Copy original to temp buffer
-    memcpy(temp_img.data(), img, width * height * channels);
-    
-    // Apply blur (skip borders for simplicity)
+    // Fast separable blur: horizontal then vertical (much faster!)
+    // Horizontal pass
     for (int y = 1; y < height - 1; y++) {
+        for (int c = 0; c < blur_channels; c++) {
+            for (int x = 1; x < width - 1; x++) {
+                int sum = img[(y * width + x - 1) * channels + c] +
+                         img[(y * width + x) * channels + c] +
+                         img[(y * width + x + 1) * channels + c];
+                temp_row[x * blur_channels + c] = sum / 3;
+            }
+        }
+        // Copy back
         for (int x = 1; x < width - 1; x++) {
-            for (int c = 0; c < channels; c++) {
-                float sum = 0.0f;
-                int kernel_idx = 0;
-                
-                // Apply 3x3 kernel
-                for (int ky = -1; ky <= 1; ky++) {
-                    for (int kx = -1; kx <= 1; kx++) {
-                        int src_idx = ((y + ky) * width + (x + kx)) * channels + c;
-                        sum += temp_img[src_idx] * kernel[kernel_idx++];
-                    }
-                }
-                
-                int dst_idx = (y * width + x) * channels + c;
-                img[dst_idx] = (unsigned char)std::max(0.0f, std::min(255.0f, sum));
+            for (int c = 0; c < blur_channels; c++) {
+                img[(y * width + x) * channels + c] = temp_row[x * blur_channels + c];
+            }
+        }
+    }
+    
+    // Vertical pass  
+    for (int x = 1; x < width - 1; x++) {
+        for (int c = 0; c < blur_channels; c++) {
+            for (int y = 1; y < height - 1; y++) {
+                int sum = img[((y - 1) * width + x) * channels + c] +
+                         img[(y * width + x) * channels + c] +
+                         img[((y + 1) * width + x) * channels + c];
+                temp_row[y * blur_channels + c] = sum / 3;
+            }
+        }
+        // Copy back
+        for (int y = 1; y < height - 1; y++) {
+            for (int c = 0; c < blur_channels; c++) {
+                img[(y * width + x) * channels + c] = temp_row[y * blur_channels + c];
             }
         }
     }
@@ -242,8 +256,8 @@ float calculate_motion_scaled(const unsigned char* img1, const unsigned char* im
         if (processed_img1 && processed_img2) {
             memcpy(processed_img1, img1, img_size);
             memcpy(processed_img2, img2, img_size);
-            apply_blur_3x3(processed_img1, width, height, channels);
-            apply_blur_3x3(processed_img2, width, height, channels);
+            apply_blur_fast(processed_img1, width, height, channels, params.use_rgb);
+            apply_blur_fast(processed_img2, width, height, channels, params.use_rgb);
             img1 = processed_img1;
             img2 = processed_img2;
         }
@@ -322,7 +336,7 @@ void print_usage(const char* program_name) {
     std::cout << "  -m <motion>      Motion threshold percentage (default: 1.0)" << std::endl;
     std::cout << "  -rgb             Use RGB mode (slower than grayscale)" << std::endl;
     std::cout << "  -u               Ultra-fast mode (fastest IDCT + upsampling, lower quality)" << std::endl;
-    std::cout << "  -b               Apply 3x3 Gaussian blur for noise reduction" << std::endl;
+    std::cout << "  -b               Apply fast blur for noise reduction (separable filter)" << std::endl;
     std::cout << "  -v               Verbose output (includes timing breakdown)" << std::endl;
     std::cout << "  -f               File size check mode (fast pre-check)" << std::endl;
     std::cout << "  --help           Show this help" << std::endl;
