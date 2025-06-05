@@ -78,13 +78,13 @@ jobs:
         echo "=== File sizes ==="
         ls -lh motion-detector-pi-zero-static motion-detector-pi-debug-pi-zero-static
         
-    - name: Upload Pi Zero artifacts
+    - name: Upload Pi Zero static artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: motion-detector-pi-zero
+        name: motion-detector-pi-zero-static
         path: |
-          motion-detector-pi-zero
-          motion-detector-pi-debug-pi-zero
+          motion-detector-pi-zero-static
+          motion-detector-pi-debug-pi-zero-static
 
   cross-compile-pi3-4:
     name: Cross-compile Pi 3/4
@@ -99,31 +99,40 @@ jobs:
         sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
         sudo apt-get install -y libc6-dev-armhf-cross
     
-    - name: Build for Pi 3/4
+    - name: Build static binaries for Pi 3/4
       run: |
-        echo "Building for Pi 3/4 (ARMv7 hard-float)"
+        echo "Building STATIC binaries for Pi 3/4 (ARMv7 hard-float)"
+        
+        STATIC_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -O2 -std=c++11 -static -static-libgcc -static-libstdc++"
         
         # Build main version
         make clean
-        make CXX="arm-linux-gnueabihf-g++" CXXFLAGS="-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -O2 -std=c++11"
-        mv motion-detector motion-detector-pi3-4
+        make CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$STATIC_FLAGS" LIBS="-lm"
+        mv motion-detector motion-detector-pi3-4-static
         
         # Build debug version
         make clean  
-        make pi-debug CXX="arm-linux-gnueabihf-g++" CXXFLAGS="-Os -g -fno-strict-aliasing -fstack-protector-strong -std=c++11"
-        mv motion-detector-pi-debug motion-detector-pi-debug-pi3-4
+        make pi-debug-static CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$STATIC_FLAGS"
+        mv motion-detector-pi-debug-static motion-detector-pi-debug-pi3-4-static
         
-        # Check files
-        file motion-detector-pi3-4
-        file motion-detector-pi-debug-pi3-4
+        # Check files and dependencies
+        echo "=== File info ==="
+        file motion-detector-pi3-4-static
+        file motion-detector-pi-debug-pi3-4-static
         
-    - name: Upload Pi 3/4 artifacts
+        echo "=== Dependencies check ==="
+        arm-linux-gnueabihf-ldd motion-detector-pi3-4-static || echo "Static binary - no dependencies (good!)"
+        
+        echo "=== File sizes ==="
+        ls -lh motion-detector-pi3-4-static motion-detector-pi-debug-pi3-4-static
+        
+    - name: Upload Pi 3/4 static artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: motion-detector-pi3-4
+        name: motion-detector-pi3-4-static
         path: |
-          motion-detector-pi3-4
-          motion-detector-pi-debug-pi3-4
+          motion-detector-pi3-4-static
+          motion-detector-pi-debug-pi3-4-static
 
   cross-compile-arm64:
     name: Cross-compile ARM64
@@ -138,30 +147,39 @@ jobs:
         sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
         sudo apt-get install -y libc6-dev-arm64-cross
     
-    - name: Build for ARM64
+    - name: Build static binaries for ARM64
       run: |
-        echo "Building for ARM64 (AArch64)"
+        echo "Building STATIC binaries for ARM64 (AArch64)"
+        
+        STATIC_FLAGS="-march=armv8-a -O2 -std=c++11 -static -static-libgcc -static-libstdc++"
         
         # Build main version
         make clean
-        make CXX="aarch64-linux-gnu-g++" CXXFLAGS="-march=armv8-a -O2 -std=c++11"
-        mv motion-detector motion-detector-arm64
+        make CXX="aarch64-linux-gnu-g++" CXXFLAGS="$STATIC_FLAGS" LIBS="-lm"
+        mv motion-detector motion-detector-arm64-static
         
         # Build debug version
         make clean  
-        make pi-debug CXX="aarch64-linux-gnu-g++" CXXFLAGS="-Os -g -fno-strict-aliasing -fstack-protector-strong -std=c++11"
-        mv motion-detector-pi-debug motion-detector-pi-debug-arm64
+        make pi-debug-static CXX="aarch64-linux-gnu-g++" CXXFLAGS="$STATIC_FLAGS"
+        mv motion-detector-pi-debug-static motion-detector-pi-debug-arm64-static
         
-        # Check files
-        file motion-detector-arm64
-        file motion-detector-pi-debug-arm64
+        # Check files and dependencies
+        echo "=== File info ==="
+        file motion-detector-arm64-static
+        file motion-detector-pi-debug-arm64-static
         
-    - name: Upload ARM64 artifacts
+        echo "=== Dependencies check ==="
+        aarch64-linux-gnu-ldd motion-detector-arm64-static || echo "Static binary - no dependencies (good!)"
+        
+        echo "=== File sizes ==="
+        ls -lh motion-detector-arm64-static motion-detector-pi-debug-arm64-static
+        
+    - name: Upload ARM64 static artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: motion-detector-arm64
+        name: motion-detector-arm64-static
         path: |
-          motion-detector-arm64
-          motion-detector-pi-debug-arm64
+          motion-detector-arm64-static
+          motion-detector-pi-debug-arm64-static
 
  

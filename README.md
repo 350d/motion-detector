@@ -201,8 +201,14 @@ if detect_motion('prev.jpg', 'curr.jpg'):
 # Default universal build
 make
 
+# Static version (no dependencies) - Linux only
+make static
+
 # Pi Zero debug version (troubleshooting)
 make pi-debug
+
+# Pi Zero static debug version - Linux only  
+make pi-debug-static
 
 # Development build with debug symbols
 make debug
@@ -210,6 +216,17 @@ make debug
 # Clean build files
 make clean
 ```
+
+### Static Builds for Pi Zero
+
+For Pi Zero deployment, use the **static builds** from GitHub Actions to avoid library version conflicts:
+
+1. Download the static binary from GitHub Actions artifacts: `motion-detector-pi-zero-static`
+2. Copy to Pi Zero: `scp motion-detector-pi-zero-static pi@doorcamera:~/motion-detector`  
+3. Make executable: `chmod +x motion-detector`
+4. Run without any library dependencies
+
+**Note:** Static linking is only available on Linux. macOS builds are dynamic only.
 
 ## Supported Formats
 
