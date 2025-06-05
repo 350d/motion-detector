@@ -49,48 +49,34 @@ jobs:
         # Try to install soft-float libraries if available
         sudo apt-get install -y libc6-dev-armel-cross || true
     
-    - name: Build for Pi Zero (ARMv6 with fallback strategy)
+    - name: Build static binaries for Pi Zero
       run: |
-        echo "Building for Pi Zero with fallback strategy"
+        echo "Building STATIC binaries for Pi Zero (no dependencies)"
         
-        # Try ARM mode hard-float first, fallback to soft-float if needed
-        set +e  # Don't exit on error
+        # Use basic ARMv6 flags for maximum compatibility + static linking
+        STATIC_FLAGS="-march=armv6 -O2 -std=c++11 -static -static-libgcc -static-libstdc++"
         
-        echo "Attempt 1: ARMv6 ARM mode with hard-float"
-        CFLAGS_HARD="-march=armv6 -marm -mfpu=vfp -mfloat-abi=hard -O2 -std=c++11"
+        echo "Building static main version"
         make clean
-        make CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$CFLAGS_HARD"
+        make CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$STATIC_FLAGS" LIBS="-lm"
+        mv motion-detector motion-detector-pi-zero-static
         
-        if [ $? -ne 0 ]; then
-          echo "Hard-float failed, trying soft-float with generic flags"
-          CFLAGS_SOFT="-march=armv6 -mfloat-abi=soft -O2 -std=c++11"
-          make clean
-          make CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$CFLAGS_SOFT"
-          
-          if [ $? -ne 0 ]; then
-            echo "Soft-float failed, trying most basic ARMv6"
-            CFLAGS_BASIC="-march=armv6 -O2 -std=c++11"
-            make clean
-            make CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$CFLAGS_BASIC"
-            
-            if [ $? -ne 0 ]; then
-              echo "All Pi Zero build attempts failed"
-              exit 1
-            fi
-          fi
-        fi
+        echo "Building static debug version"  
+        make clean
+        make pi-debug-static CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$STATIC_FLAGS"
+        mv motion-detector-pi-debug-static motion-detector-pi-debug-pi-zero-static
         
-        mv motion-detector motion-detector-pi-zero
+        # Check files and dependencies
+        echo "=== File info ==="
+        file motion-detector-pi-zero-static
+        file motion-detector-pi-debug-pi-zero-static
         
-        # Build debug version (use basic flags for maximum compatibility)
-        echo "Building debug version with basic ARMv6 flags"
-        make clean  
-        make pi-debug CXX="arm-linux-gnueabihf-g++" CXXFLAGS="-march=armv6 -Os -g -std=c++11"
-        mv motion-detector-pi-debug motion-detector-pi-debug-pi-zero
+        echo "=== Checking dependencies (should be statically linked) ==="
+        arm-linux-gnueabihf-ldd motion-detector-pi-zero-static || echo "Static binary - no dependencies (good!)"
+        arm-linux-gnueabihf-ldd motion-detector-pi-debug-pi-zero-static || echo "Static binary - no dependencies (good!)"
         
-        # Check files
-        file motion-detector-pi-zero
-        file motion-detector-pi-debug-pi-zero
+        echo "=== File sizes ==="
+        ls -lh motion-detector-pi-zero-static motion-detector-pi-debug-pi-zero-static
         
     - name: Upload Pi Zero artifacts
       uses: actions/upload-artifact@v4

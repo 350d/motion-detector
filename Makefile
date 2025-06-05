@@ -13,9 +13,17 @@ HEADERS = motion_stb_image.h stb_image.h
 motion-detector: $(MAIN_SRC) $(HEADERS)
 	$(CXX) $(CXXFLAGS) -o $@ $(MAIN_SRC) $(LIBS)
 
+# Static version (no dependencies)
+static: $(MAIN_SRC) $(HEADERS)
+	$(CXX) $(CXXFLAGS) -static -static-libgcc -static-libstdc++ -o motion-detector-static $(MAIN_SRC) $(LIBS)
+
 # Pi Zero debug version (for troubleshooting only)
 pi-debug: $(MAIN_SRC) $(HEADERS)
 	$(CXX) $(CXXFLAGS) -DMOTION_PI_ZERO_DEBUG -o motion-detector-pi-debug $(MAIN_SRC) $(LIBS)
+
+# Pi Zero static debug version
+pi-debug-static: $(MAIN_SRC) $(HEADERS)
+	$(CXX) $(CXXFLAGS) -static -static-libgcc -static-libstdc++ -DMOTION_PI_ZERO_DEBUG -o motion-detector-pi-debug-static $(MAIN_SRC) $(LIBS)
 
 # Development build with debug symbols
 debug: $(MAIN_SRC) $(HEADERS)
@@ -28,9 +36,9 @@ install: motion-detector
 
 # Clean build artifacts
 clean:
-	rm -f motion-detector motion-detector-pi-debug motion-detector-debug
+	rm -f motion-detector motion-detector-static motion-detector-pi-debug motion-detector-pi-debug-static motion-detector-debug
 
 # Default target
 .DEFAULT_GOAL := motion-detector
 
-.PHONY: clean install pi-debug debug 
+.PHONY: clean install static pi-debug pi-debug-static debug 
