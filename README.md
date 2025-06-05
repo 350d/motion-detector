@@ -205,15 +205,108 @@ This version is specifically optimized for Pi Zero and ARM systems:
 - **JPEG**: Full support with decode-time scaling
 - **Other formats**: Not supported (JPEG focus for Pi Zero optimization)
 
-### Pi Zero Installation
+### Installation
+
+**Ubuntu/Debian/Pi Zero:**
 ```bash
-# On Pi Zero:
 sudo apt update
-sudo apt install libjpeg-turbo8-dev build-essential
+sudo apt install libjpeg-turbo8-dev build-essential pkg-config
 git clone <repository>
 cd motion-detector
 make
 ./test_pi_zero.sh  # Test compatibility
+```
+
+**CentOS/RHEL:**
+```bash
+sudo yum install libjpeg-turbo-devel gcc-c++ make pkg-config
+# or: sudo dnf install libjpeg-turbo-devel gcc-c++ make pkg-config
+git clone <repository>
+cd motion-detector
+make
+```
+
+**macOS (Homebrew):**
+```bash
+brew install jpeg-turbo
+git clone <repository>
+cd motion-detector
+make
+```
+
+**Static build (Linux/Pi Zero only):**
+```bash
+# For deployment without dependencies
+make static
+
+# Pi Zero optimized static build
+make pi-zero
+```
+
+**Manual installation (if pkg-config fails):**
+```bash
+# Install libjpeg-turbo manually, then:
+make JPEG_LIBS="-ljpeg" JPEG_CFLAGS="-I/usr/include"
+```
+
+### Troubleshooting
+
+**Error: `Package libjpeg was not found`**
+```bash
+# Ubuntu/Debian:
+sudo apt install libjpeg-turbo8-dev pkg-config
+
+# CentOS/RHEL:
+sudo yum install libjpeg-turbo-devel pkg-config
+
+# macOS:
+brew install jpeg-turbo pkg-config
+```
+
+**Error: `jpeglib.h: No such file or directory`**
+```bash
+# Find libjpeg installation:
+find /usr -name "jpeglib.h" 2>/dev/null
+find /opt -name "jpeglib.h" 2>/dev/null
+
+# Then compile with manual path:
+make JPEG_CFLAGS="-I/path/to/include" JPEG_LIBS="-ljpeg"
+```
+
+### Build Options
+
+| Target | Description | Platform |
+|--------|-------------|----------|
+| `make` | Standard build with dynamic linking | All |
+| `make static` | Static build (no dependencies) | Linux/Pi Zero only |
+| `make pi-zero` | Pi Zero optimized static build | Pi Zero/ARM |
+| `make debug` | Debug build with symbols | All |
+| `make clean` | Clean build artifacts | All |
+| `make install` | Install to system | Linux/macOS |
+| `make test-pi` | Run Pi Zero compatibility tests | All |
+
+### Static Build for Deployment
+
+Static builds include all dependencies and can run on systems without libjpeg-turbo installed:
+
+```bash
+# On build machine (with libjpeg-turbo-dev):
+make static
+
+# Copy to target Pi Zero:
+scp motion-detector-static pi@raspberrypi:~/motion-detector
+
+# Run on Pi Zero (no dependencies needed):
+./motion-detector image1.jpg image2.jpg
+```
+
+**Pi Zero optimized build:**
+```bash
+# Cross-compile for Pi Zero (on x86_64):
+make pi-zero
+
+# Or compile directly on Pi Zero:
+make static
 ```
 
 ## Integration Examples
@@ -247,7 +340,13 @@ if detect_motion('prev.jpg', 'curr.jpg'):
     print("Motion detected!")
 ```
 
-### Cron Job
+### Cron Job (Pi Zero deployment)
+```bash
+# Use static build for reliable deployment
+*/5 * * * * /home/pi/motion-detector-static /home/pi/cam/prev.jpg /home/pi/cam/curr.jpg -s 4 && echo "Motion detected at $(date)" >> /var/log/motion.log
+```
+
+### Systemd Service
 ```bash
 # Add to crontab for periodic checking
 * * * * * /path/to/motion-detector /tmp/prev.jpg /tmp/curr.jpg -f && /path/to/alert.sh
