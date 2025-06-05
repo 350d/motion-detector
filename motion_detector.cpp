@@ -6,7 +6,7 @@
     #warning "Building Pi Zero debug version with realistic settings for 512MB RAM"
     #define MOTION_DISABLE_DC_MODE 1
     #define MOTION_CONSERVATIVE_MEMORY 1
-    #define MOTION_MAX_SAFE_IMAGE_SIZE (7680*4320*3)  // 8K max (~100MB per image, but scale factor reduces memory usage)
+    #define MOTION_MAX_SAFE_IMAGE_SIZE (1280*720*3)  // HD for 512MB Pi Zero (~2.8MB per image, ~20MB total)
     #define MOTION_ENABLE_BOUNDS_CHECKING 1
 #endif
 
@@ -83,11 +83,12 @@ bool is_image_safe_for_pi_zero(int width, int height, int channels, bool verbose
     // Scale factor reduces memory usage quadratically: -s 2 = 4x less, -s 4 = 16x less
     size_t effective_memory = image_size / (scale_factor * scale_factor);
     
-    // Realistic limits for Pi Zero 512MB RAM - allow up to 8K with appropriate scale factor
-    if (width > 7680 || height > 4320) {
+    // Realistic limits for Pi Zero 512MB RAM - loading memory constraints  
+    if (width > 1280 || height > 720) {
         if (verbose) {
             std::cerr << "Pi Zero Warning: Image " << width << "x" << height << 
-                " exceeds maximum resolution (7680x4320)." << std::endl;
+                " exceeds safe loading resolution (1280x720)." << std::endl;
+            std::cerr << "Note: Images are loaded fully into memory regardless of scale factor." << std::endl;
         }
         return false;
     }
@@ -628,7 +629,24 @@ int main(int argc, char* argv[]) {
     }
 
     #ifdef MOTION_PI_ZERO_DEBUG
-    // Pi Zero safety check (only in debug mode) with scale factor consideration
+    // Pi Zero safety check BEFORE loading images (actual memory usage)
+    // Get image info without loading full image
+    int test_width, test_height, test_channels;
+    if (stbi_info(image1_path, &test_width, &test_height, &test_channels)) {
+        if (!is_image_safe_for_pi_zero(test_width, test_height, test_channels, params.verbose, 1)) {
+            std::cerr << "Error: Image 1 too large for Pi Zero 512MB RAM" << std::endl;
+            std::cerr << "Image size: " << test_width << "x" << test_height << "x" << test_channels << std::endl;
+            std::cerr << "Memory needed: " << ((size_t)test_width * test_height * test_channels / 1024 / 1024) << "MB per image" << std::endl;
+            std::cerr << "Note: Scale factor (-s) does NOT reduce loading memory, only processing" << std::endl;
+            std::cerr << "Recommendations:" << std::endl;
+            std::cerr << "  - Resize images before processing (recommended max: 1024x768)" << std::endl;
+            std::cerr << "  - Use file size mode: -f for ultra-fast processing" << std::endl;
+            std::cerr << "  - Try JPEG quality reduction to decrease file complexity" << std::endl;
+            return 2;
+        }
+    }
+    
+    // After successful loading, do final safety check
     if (!is_image_safe_for_pi_zero(width1, height1, channels1, params.verbose, params.scale_factor)) {
         std::cerr << "Error: Image too large for Pi Zero 512MB RAM" << std::endl;
         std::cerr << "Recommendations:" << std::endl;
