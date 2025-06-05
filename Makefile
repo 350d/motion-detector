@@ -1,5 +1,5 @@
-# Motion Detector - Universal Version
-# Supports all platforms with automatic optimizations and fallbacks
+# Motion Detector - libjpeg-turbo Version
+# Optimized for Pi Zero with ARM-safe image loading and decode-time scaling
 
 CXX = c++
 CXXFLAGS = -std=c++11 -O2 -Wall -Wextra
@@ -7,46 +7,33 @@ LIBS = -lm
 
 # Source files
 MAIN_SRC = motion_detector.cpp
-HEADERS = motion_stb_image.h stb_image.h
 
-# Default target: Universal version
-motion-detector: $(MAIN_SRC) $(HEADERS)
-	$(CXX) $(CXXFLAGS) -o $@ $(MAIN_SRC) $(LIBS)
+# Default target: libjpeg-turbo version
+motion-detector: $(MAIN_SRC)
+	$(CXX) $(CXXFLAGS) `pkg-config --cflags libjpeg` -o $@ $(MAIN_SRC) `pkg-config --libs libjpeg` $(LIBS)
 
-# Static version (no dependencies)
-static: $(MAIN_SRC) $(HEADERS)
-	$(CXX) $(CXXFLAGS) -static -static-libgcc -static-libstdc++ -o motion-detector-static $(MAIN_SRC) $(LIBS)
-
-# Pi Zero debug version (for troubleshooting only)
-pi-debug: $(MAIN_SRC) $(HEADERS)
-	$(CXX) $(CXXFLAGS) -DMOTION_PI_ZERO_DEBUG -o motion-detector-pi-debug $(MAIN_SRC) $(LIBS)
-
-# Pi Zero static debug version
-pi-debug-static: $(MAIN_SRC) $(HEADERS)
-	$(CXX) $(CXXFLAGS) -static -static-libgcc -static-libstdc++ -DMOTION_PI_ZERO_DEBUG -o motion-detector-pi-debug-static $(MAIN_SRC) $(LIBS)
+# Static version (Pi Zero - may not work on all systems)
+static: $(MAIN_SRC)
+	$(CXX) $(CXXFLAGS) `pkg-config --cflags libjpeg` -static -o motion-detector-static $(MAIN_SRC) `pkg-config --libs libjpeg` $(LIBS)
 
 # Development build with debug symbols
-debug: $(MAIN_SRC) $(HEADERS)
-	$(CXX) $(CXXFLAGS) -g -DDEBUG -o motion-detector-debug $(MAIN_SRC) $(LIBS)
+debug: $(MAIN_SRC)
+	$(CXX) $(CXXFLAGS) `pkg-config --cflags libjpeg` -g -DDEBUG -o motion-detector-debug $(MAIN_SRC) `pkg-config --libs libjpeg` $(LIBS)
 
 # Install to system (requires sudo)
 install: motion-detector
 	sudo cp motion-detector /usr/local/bin/
 	sudo chmod +x /usr/local/bin/motion-detector
 
+# Test Pi Zero compatibility
+test-pi: motion-detector
+	./test_pi_zero.sh
+
 # Clean build artifacts
 clean:
-	rm -f motion-detector motion-detector-static motion-detector-pi-debug motion-detector-pi-debug-static motion-detector-debug
-
-# Copy debug files with binary
-debug-package: pi-debug
-	cp motion-detector-pi-debug motion-detector-debug
-	@echo "Debug package ready with:"
-	@echo "  - motion-detector-debug (Pi Zero debug binary)"
-	@echo "  - pi_zero_debug_test.sh (automated test script)"
-	@echo "  - PI_ZERO_SEGFAULT_DEBUG.md (debug guide)"
+	rm -f motion-detector motion-detector-static motion-detector-debug
 
 # Default target
 .DEFAULT_GOAL := motion-detector
 
-.PHONY: clean install static pi-debug pi-debug-static debug debug-package 
+.PHONY: clean install static debug test-pi 

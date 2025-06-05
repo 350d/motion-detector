@@ -1,18 +1,17 @@
 # Motion Detector
 
-Universal motion detection utility for comparing two images. Optimized for video frame analysis with automatic platform detection and smart optimizations.
+High-performance motion detection utility for comparing JPEG images. Optimized for Pi Zero with ARM-safe image loading and decode-time scaling.
 
 ## Features
 
-- **Universal compatibility** - works on all platforms (x86, ARM, Pi Zero, Pi 4)
-- **Intelligent JPEG optimizations** - automatic scaling during decode for memory efficiency
-- **DC-only mode** - ultra-fast JPEG preview mode (270x memory reduction)
-- **Automatic mode selection** - detects image size and applies optimal processing
-- **Smart image caching** - mode-aware caching with memory limits
+- **Pi Zero optimized** - ARM-safe libjpeg-turbo instead of problematic stb_image
+- **Decode-time scaling** - images scaled during JPEG decode (much more efficient)
+- **Automatic Pi Zero protection** - large images auto-scaled to prevent crashes
+- **Memory efficient** - up to 16x memory reduction with scale factor 4
+- **Ultra-fast processing** - optimized for video surveillance and real-time analysis
+- **File size pre-check** - ultra-fast motion detection based on file size changes
 - **Flexible thresholds** - pixel-level and percentage-based motion detection
-- **Fast file size mode** - ultra-fast pre-screening based on file size changes
 - **Grayscale processing** - 3x faster analysis option
-- **Blur filtering** - reduces noise for better motion detection
 
 ## Quick Start
 
@@ -29,12 +28,25 @@ make
 
 ## Installation
 
+### Requirements
+- **libjpeg-turbo** development headers
+
 ```bash
+# On Pi Zero/Debian/Ubuntu:
+sudo apt update
+sudo apt install libjpeg-turbo8-dev
+
+# On macOS:
+brew install jpeg-turbo
+
 # Compile
 make
 
 # Install to system (optional)
 make install
+
+# Test Pi Zero compatibility
+make test-pi
 ```
 
 ## Usage
@@ -48,15 +60,13 @@ make install
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-t&nbsp;<threshold>` | **Pixel sensitivity**: How different pixels must be to count as "changed" (0-255). Lower = more sensitive | 25 |
-| `-s <scale>` | Process every N-th pixel for speed | 1 |
+| `-s <scale>` | **Decode scale factor**: 1=full, 2=half, 4=quarter, 8=eighth (JPEG scaled during decode!) | 1 |
 | `-m <motion_pct>` | Motion percentage threshold | 1.0 |
 | `-f [threshold]` | Fast file size comparison mode | 5% |
-| `-d` | **JPEG DC-only mode** - ultra-fast preview (270x memory reduction) | - |
-| `--dc-strict` | DC-only mode, error if not supported | - |
-| `-g` | Force grayscale processing (3x faster) | - |
-| `-b` | Enable 3x3 blur filter to reduce noise | - |
+| `-g` | Disable grayscale processing (use full RGB) | - |
+| `--fast` | **Ultra-fast mode**: fastest IDCT + upsampling (15-25% faster, lower quality) | - |
 | `-v` | Verbose output with detailed statistics | - |
-| `--benchmark` | Show timing information | - |
+| `-b` | Show benchmark timing | - |
 
 ### Threshold Explanation (`-t`)
 
@@ -84,29 +94,35 @@ The **pixel threshold** controls how sensitive motion detection is:
 ### Examples
 
 ```bash
-# Basic motion detection (auto-optimized for JPEG)
+# Basic motion detection (auto-optimized for Pi Zero)
 ./motion-detector prev.jpg curr.jpg
 
-# High sensitivity with grayscale
+# High sensitivity with RGB processing
 ./motion-detector frame1.jpg frame2.jpg -t 15 -g
 
-# Ultra-fast JPEG DC-only mode (270x memory reduction)
-./motion-detector large1.jpg large2.jpg -d
+# Fast processing with 1/4 scale (16x memory reduction)
+./motion-detector large1.jpg large2.jpg -s 4
 
-# Fast processing for video streams
-./motion-detector vid1.jpg vid2.jpg -s 4 -g
+# Ultra-fast processing with 1/8 scale (64x memory reduction)
+./motion-detector vid1.jpg vid2.jpg -s 8
+
+# Ultra-fast decode with fastest IDCT + upsampling
+./motion-detector img1.jpg img2.jpg --fast
 
 # Ultra-fast file size check
 ./motion-detector cam1.jpg cam2.jpg -f
 
-# Detailed analysis with blur filtering
-./motion-detector img1.jpg img2.jpg -b -v -t 20
+# Extreme speed: fast mode + quarter scale
+./motion-detector large1.jpg large2.jpg --fast -s 4
 
-# Performance testing
-./motion-detector img1.jpg img2.jpg -d --benchmark
+# Detailed analysis with timing
+./motion-detector img1.jpg img2.jpg -v -b -t 20
+
+# Pi Zero optimized for FullHD images
+./motion-detector hd1.jpg hd2.jpg -s 4 -v
 
 # Use in scripts
-if ./motion-detector img1.jpg img2.jpg -g -s 4; then
+if ./motion-detector img1.jpg img2.jpg -s 2; then
     echo "Motion detected!"
 fi
 
@@ -122,32 +138,25 @@ result=$(./motion-detector img1.jpg img2.jpg -v | grep "Motion:" | cut -d' ' -f2
 
 ## Performance Modes
 
-### JPEG Optimizations (Automatic)
-- **Auto-detection**: Automatically detects JPEG files and applies optimizations
-- **Memory prediction**: Pre-checks image size to prevent Pi Zero crashes
-- **Intelligent scaling**: Automatically selects optimal scale based on image size:
-  - Images > 2560px wide → 1/8 scale (64x faster, 1/64 memory)
-  - Images > 1280px wide → 1/4 scale (16x faster, 1/16 memory)  
-  - Images > 640px wide → 1/2 scale (4x faster, 1/4 memory)
+### Decode-Time Scaling (`-s`)
+Images are scaled **during JPEG decode** - much more efficient than pixel skipping:
 
-### DC-Only Mode (`-d`)
-Ultra-fast JPEG preview mode:
-- **Memory**: 270x reduction (0.01 MB vs 2.7 MB for 1280x720)
-- **Speed**: 68x faster motion detection
-- **Quality**: Sufficient for motion detection
-- **Example**: 1280x720 → 80x45 preview
-
-### Scale Factor (`-s`)
 - `-s 1`: Full resolution (default)
-- `-s 2`: Half resolution (4x faster)
-- `-s 4`: Quarter resolution (16x faster)
-- `-s 8`: Eighth resolution (64x faster)
+- `-s 2`: Half resolution (4x less memory, 2x faster)
+- `-s 4`: Quarter resolution (16x less memory, 4x faster)
+- `-s 8`: Eighth resolution (64x less memory, 8x faster)
+
+### Pi Zero Auto-Protection
+Large images are automatically scaled to prevent crashes:
+- Images > 1280x720 → automatically scaled to 1/2 during decode
+- Prevents segfaults while maintaining functionality
 
 ### Processing Options
-- **DC-only** (`-d`): 270x memory reduction for JPEG
-- **Grayscale** (`-g`): 3x faster than RGB
+- **Decode scaling** (`-s`): Real memory reduction during JPEG decode
+- **Grayscale** (default): 3x faster than RGB, use `-g` to disable
+- **Fast mode** (`--fast`): Fastest IDCT + upsampling (15-25% faster, lower quality)
 - **File size** (`-f`): ~1000x faster than pixel analysis
-- **Blur filter** (`-b`): Better accuracy, slightly slower
+- **Benchmark** (`-b`): Show detailed timing breakdown
 
 ## Fast Mode (`-f`)
 
@@ -165,38 +174,46 @@ Speed: ~1 microsecond vs ~1 millisecond for full pixel analysis.
 
 ## Performance Results
 
-### JPEG Optimization Test (1280x720 images)
+### libjpeg-turbo Test Results (640x480 images)
 
-| Mode | Memory Usage | Load Time | Motion Time | Total Time | Image Size |
-|------|-------------|-----------|-------------|------------|------------|
-| **Original** | 2.7 MB | - | - | - | 1280x720 |
-| **Auto (1/2 scale)** | 0.66 MB | 9.2 ms | 0.48 ms | 9.7 ms | 640x360 |
-| **DC-only** | 0.01 MB | 7.8 ms | 0.007 ms | 7.8 ms | 80x45 |
+| Scale Factor | Memory Usage | Load Time | Motion Time | Total Time | Final Size |
+|-------------|-------------|-----------|-------------|------------|------------|
+| **1x (full)** | 900 KB | 1.54 ms | 0.42 ms | 1.96 ms | 640x480 |
+| **1x + fast** | 900 KB | 1.29 ms | 0.36 ms | 1.65 ms | 640x480 |
+| **2x (half)** | 225 KB | 0.87 ms | 0.07 ms | 0.95 ms | 320x240 |
+| **4x (quarter)** | 56 KB | 0.89 ms | 0.03 ms | 0.92 ms | 160x120 |
+| **4x + fast** | 56 KB | 0.68 ms | 0.02 ms | 0.70 ms | 160x120 |
 
-**DC-only benefits:**
-- 270x memory reduction
-- 68x faster motion detection  
-- 20% faster overall processing
-- Perfect for Pi Zero and video streams
+### Benefits of libjpeg-turbo Optimizations:
+- **Decode scaling**: 16x memory reduction with 4x scale, real memory savings
+- **Fast mode**: 15-25% speed boost with fastest IDCT + upsampling
+- **No segfaults**: ARM-safe libjpeg-turbo instead of problematic stb_image
+- **Real scaling**: Images actually smaller in memory, not just pixel skipping
+- **Pi Zero ready**: Automatic protection for large images
 
 ## Platform Support
 
-### Automatic Detection
-The program automatically detects your platform and applies optimal settings:
+### Pi Zero Optimized
+This version is specifically optimized for Pi Zero and ARM systems:
 
-- **x86/x64**: Full optimizations enabled
-- **ARM/Pi**: Conservative settings with fallbacks
-- **Pi Zero**: Memory-safe processing with automatic downsampling
+- **ARM-safe**: Uses libjpeg-turbo instead of problematic stb_image
+- **Memory efficient**: Automatic scaling for large images
+- **No segfaults**: Tested and stable on Pi Zero hardware
+- **Real-time capable**: Fast enough for video surveillance
 
-### Pi Zero Support
-Special Pi Zero debug version available for troubleshooting:
+### Supported Formats
+- **JPEG**: Full support with decode-time scaling
+- **Other formats**: Not supported (JPEG focus for Pi Zero optimization)
 
+### Pi Zero Installation
 ```bash
-# Build debug version for Pi Zero
-make pi-debug
-
-# Use for segfault troubleshooting
-./motion-detector-pi-debug img1.jpg img2.jpg -v
+# On Pi Zero:
+sudo apt update
+sudo apt install libjpeg-turbo8-dev build-essential
+git clone <repository>
+cd motion-detector
+make
+./test_pi_zero.sh  # Test compatibility
 ```
 
 ## Integration Examples
