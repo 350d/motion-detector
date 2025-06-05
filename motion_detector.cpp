@@ -3,10 +3,10 @@
 
 // Pi Zero debug mode - conservative settings
 #ifdef MOTION_PI_ZERO_DEBUG
-    #warning "Building Pi Zero debug version with conservative settings"
+    #warning "Building Pi Zero debug version with realistic settings for 512MB RAM"
     #define MOTION_DISABLE_DC_MODE 1
     #define MOTION_CONSERVATIVE_MEMORY 1
-    #define MOTION_MAX_SAFE_IMAGE_SIZE (1920*1080*3)  // 2MP (Full HD) max
+    #define MOTION_MAX_SAFE_IMAGE_SIZE (3840*2160*3)  // 4K max (~25MB per image, 120MB total with buffers)
     #define MOTION_ENABLE_BOUNDS_CHECKING 1
 #endif
 
@@ -20,7 +20,7 @@
 
 // Conservative memory mode
 #ifdef MOTION_CONSERVATIVE_MEMORY
-    #define MOTION_MAX_BLUR_SIZE (800*600*3)  // VGA max for blur
+    #define MOTION_MAX_BLUR_SIZE (1920*1080*3)  // Full HD max for blur (safe on 512MB)
     #define MOTION_STACK_PROTECT 1
 #endif
 
@@ -52,8 +52,8 @@ void segfault_handler(int sig) {
     std::cerr << "  - Stack overflow from large images" << std::endl;
     std::cerr << "  - ARM alignment issues" << std::endl;
     std::cerr << "Try:" << std::endl;
-    std::cerr << "  - Smaller images (1920x1080 max recommended)" << std::endl;
-    std::cerr << "  - Higher scale factor (-s 8)" << std::endl;
+    std::cerr << "  - Smaller images (4K max: 3840x2160)" << std::endl;
+    std::cerr << "  - Higher scale factor (-s 4 or -s 8)" << std::endl;
     std::cerr << "  - Avoid blur filter (-b flag)" << std::endl;
     std::cerr << "  - Use file size mode (-f)" << std::endl;
     exit(3);
@@ -79,11 +79,11 @@ bool is_image_safe_for_pi_zero(int width, int height, int channels, bool verbose
     size_t image_size = (size_t)width * (size_t)height * (size_t)channels;
     
     #ifdef MOTION_PI_ZERO_DEBUG
-    // Conservative limits for Pi Zero - allow up to Full HD
-    if (width > 1920 || height > 1080) {
+    // Realistic limits for Pi Zero 512MB RAM - allow up to 4K
+    if (width > 3840 || height > 2160) {
         if (verbose) {
             std::cerr << "Pi Zero Warning: Image " << width << "x" << height << 
-                " exceeds safe resolution (1920x1080). Segfault risk high." << std::endl;
+                " exceeds safe resolution (3840x2160). Memory limit reached." << std::endl;
         }
         return false;
     }
@@ -616,11 +616,11 @@ int main(int argc, char* argv[]) {
     #ifdef MOTION_PI_ZERO_DEBUG
     // Pi Zero safety check (only in debug mode)
     if (!is_image_safe_for_pi_zero(width1, height1, channels1, params.verbose)) {
-        std::cerr << "Error: Image too large for safe processing on Pi Zero" << std::endl;
+        std::cerr << "Error: Image too large for Pi Zero 512MB RAM" << std::endl;
         std::cerr << "Recommendations:" << std::endl;
-        std::cerr << "  - Resize images to 1920x1080 or smaller" << std::endl;
-        std::cerr << "  - Use higher scale factor: -s 8" << std::endl;
-        std::cerr << "  - Try file size mode: -f" << std::endl;
+        std::cerr << "  - Resize images to 4K (3840x2160) or smaller" << std::endl;
+        std::cerr << "  - Use higher scale factor: -s 4 or -s 8" << std::endl;
+        std::cerr << "  - Try file size mode: -f for ultra-fast processing" << std::endl;
         // Universal cleanup
         if (img1) motion_stbi_image_free(img1);
         if (img2) motion_stbi_image_free(img2);
