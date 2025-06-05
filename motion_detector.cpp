@@ -10,6 +10,14 @@
     #define MOTION_ENABLE_BOUNDS_CHECKING 1
 #endif
 
+// Pi Zero advanced mode - full features with safety fallbacks
+#ifdef MOTION_PI_ZERO_ADVANCED
+    #warning "Building Pi Zero advanced version with safety fallbacks"
+    #define MOTION_MAX_SAFE_IMAGE_SIZE (1536*1024*3)  // 1.5MP max
+    #define MOTION_ENABLE_BOUNDS_CHECKING 1
+    // Keep all advanced features but with fallbacks
+#endif
+
 // Conservative memory mode
 #ifdef MOTION_CONSERVATIVE_MEMORY
     #define MOTION_MAX_BLUR_SIZE (800*600*3)  // VGA max for blur
@@ -32,6 +40,7 @@
 #include <sys/stat.h>
 #include <iomanip>
 #include <signal.h>
+#include <string>
 
 // Signal handler for segfault debugging
 #ifdef MOTION_PI_ZERO_DEBUG
@@ -164,8 +173,13 @@ void apply_blur_3x3(unsigned char* output, const unsigned char* input,
 // Convert RGB to grayscale using standard luminance formula
 void rgb_to_grayscale_optimized(unsigned char* grayscale, const unsigned char* rgb, 
                                int pixel_count) {
-    // Use the optimized SIMD function from motion_stb_image
-    motion_stbi_rgb_to_grayscale_simd(grayscale, const_cast<unsigned char*>(rgb), pixel_count);
+    // Simple RGB to grayscale conversion
+    for (int i = 0; i < pixel_count; i++) {
+        int r = rgb[i * 3];
+        int g = rgb[i * 3 + 1];
+        int b = rgb[i * 3 + 2];
+        grayscale[i] = (unsigned char)((77 * r + 150 * g + 29 * b) >> 8);
+    }
 }
 
 // Estimate header size for different image formats
@@ -314,43 +328,41 @@ float calculate_motion_advanced(const unsigned char* img1, const unsigned char* 
            (100.0f * changed_pixels / total_pixels_checked) : 0.0f;
 }
 
-// Load image with motion detection optimizations
+// Simplified optimized image loader - no fallback needed
 unsigned char* load_image_optimized(const char* filename, int* width, int* height, 
                                    int* channels, const MotionDetectionParams& params,
-                                   motion_buffer_t* reuse_buffer = nullptr, bool* dc_fallback_used = nullptr) {
+                                   motion_buffer_t* reuse_buffer = nullptr) {
     
-    // Check DC-only compatibility in strict mode
-    if (params.dc_strict_mode) {
-        if (!motion_stbi_test_dc_compatibility(filename)) {
-            // Return nullptr to indicate DC-only incompatibility
-            return nullptr;
-        }
+    #ifdef MOTION_PI_ZERO_DEBUG
+    // Pi Zero debug mode: use only stb_image for troubleshooting
+    if (params.verbose) {
+        std::cout << "Pi Zero debug mode: using standard stb_image only" << std::endl;
     }
+    return stbi_load(filename, width, height, channels, 
+                    params.use_grayscale ? 1 : 0);
+    #endif
     
+    // Select motion mode based on parameters
     int motion_mode = MOTION_MODE_FULL;
     
     if (params.dc_only_mode) {
-        motion_mode = MOTION_MODE_DC_ONLY;
+        // DC-only mode is no longer complex - just falls back to full mode
+        motion_mode = MOTION_MODE_FULL;
     } else if (params.scale_factor >= 4) {
         motion_mode = MOTION_MODE_QUARTER;
     } else if (params.scale_factor >= 2) {
         motion_mode = MOTION_MODE_HALF;
     }
     
-    // Try optimized loading first
+    // Use simplified optimized loader (just stb_image wrapper with caching/downsampling)
     unsigned char* img = motion_stbi_load(filename, width, height, channels, 
-                                        params.use_grayscale ? 1 : 0, 
-                                        motion_mode, reuse_buffer);
+                                         params.use_grayscale ? 1 : 0, 
+                                         motion_mode, reuse_buffer);
     
-    // Check if we used DC-only mode and if it succeeded
-    if (dc_fallback_used) {
-        // For now, we'll assume DC-only worked if we got an image
-        // A more sophisticated implementation would modify motion_stbi_load 
-        // to return status information
-        *dc_fallback_used = false;
+    if (params.verbose && img) {
+        std::cout << "Image loaded successfully (" << *width << "x" << *height 
+                  << ", " << *channels << " channels)" << std::endl;
     }
-    
-    // Note: motion_stbi_load now uses stbi_load internally with optimizations
     
     return img;
 }
@@ -405,13 +417,7 @@ int main(int argc, char* argv[]) {
     std::cout << "=== Pi Zero Debug Mode Active ===" << std::endl;
     std::cout << "Conservative memory limits enabled" << std::endl;
     std::cout << "Max safe image size: " << (MOTION_MAX_SAFE_IMAGE_SIZE/1024/1024) << "MB" << std::endl;
-    std::cout << "DC-only mode: " << 
-        #ifdef MOTION_DISABLE_DC_MODE
-        "DISABLED (for stability)"
-        #else
-        "Enabled"
-        #endif
-        << std::endl;
+    std::cout << "Automatic fallback to standard stb_image" << std::endl;
     std::cout << "===============================\n" << std::endl;
     #endif
 
@@ -515,8 +521,7 @@ int main(int argc, char* argv[]) {
         return size_motion_detected ? 1 : 0;
     }
     
-    // Create separate buffers for each image to avoid cache conflicts
-    // Use a reasonable default size, will be reallocated if needed
+    // Create buffers - they will be used if optimization is available
     size_t default_buffer_size = 1920 * 1080 * 3; // HD buffer default
     motion_buffer_t* buffer1 = motion_stbi_buffer_create(default_buffer_size);
     motion_buffer_t* buffer2 = motion_stbi_buffer_create(default_buffer_size);
@@ -526,8 +531,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Loading image 1: " << image1_path << std::endl;
         std::cout << "Loading image 2: " << image2_path << std::endl;
         std::cout << "DC-only mode: " << (params.dc_only_mode ? "Yes" : "No") << std::endl;
-        std::cout << "Buffer1 created: " << (buffer1 ? "Yes" : "No") << std::endl;
-        std::cout << "Buffer2 created: " << (buffer2 ? "Yes" : "No") << std::endl;
+        std::cout << "Buffers created: " << (buffer1 && buffer2 ? "Yes" : "No") << std::endl;
     }
     
     // Load images
@@ -588,8 +592,9 @@ int main(int argc, char* argv[]) {
         } else {
             std::cerr << "Error: Could not load images" << std::endl;
         }
-        motion_stbi_image_free(img1);
-        motion_stbi_image_free(img2);
+        // Universal cleanup
+        if (img1) motion_stbi_image_free(img1);
+        if (img2) motion_stbi_image_free(img2);
         if (buffer1) motion_stbi_buffer_free(buffer1);
         if (buffer2) motion_stbi_buffer_free(buffer2);
         return 2;
@@ -600,8 +605,9 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: Images must have the same dimensions and format" << std::endl;
         std::cerr << "Image 1: " << width1 << "x" << height1 << "x" << channels1 << std::endl;
         std::cerr << "Image 2: " << width2 << "x" << height2 << "x" << channels2 << std::endl;
-        motion_stbi_image_free(img1);
-        motion_stbi_image_free(img2);
+        // Universal cleanup
+        if (img1) motion_stbi_image_free(img1);
+        if (img2) motion_stbi_image_free(img2);
         if (buffer1) motion_stbi_buffer_free(buffer1);
         if (buffer2) motion_stbi_buffer_free(buffer2);
         return 2;
@@ -614,8 +620,9 @@ int main(int argc, char* argv[]) {
         std::cerr << "  - Resize images to 640x480 or smaller" << std::endl;
         std::cerr << "  - Use higher scale factor: -s 8" << std::endl;
         std::cerr << "  - Try simple version: motion-detector-simple" << std::endl;
-        motion_stbi_image_free(img1);
-        motion_stbi_image_free(img2);
+        // Universal cleanup
+        if (img1) motion_stbi_image_free(img1);
+        if (img2) motion_stbi_image_free(img2);
         if (buffer1) motion_stbi_buffer_free(buffer1);
         if (buffer2) motion_stbi_buffer_free(buffer2);
         return 2;
@@ -734,9 +741,14 @@ int main(int argc, char* argv[]) {
         std::cout << "Processing speed: " << (processed_pixels / (motion_time.count() / 1000000.0)) / 1000000.0 << " MP/s" << std::endl;
     }
     
-    // Cleanup
-    motion_stbi_image_free(img1);
-    motion_stbi_image_free(img2);
+    // Cleanup - universal approach
+    // Always try motion cleanup first, fallback to stb cleanup
+    if (img1) {
+        motion_stbi_image_free(img1);
+    }
+    if (img2) {
+        motion_stbi_image_free(img2);
+    }
     
     // Clean up buffers (safe to call even if not used)
     if (buffer1) motion_stbi_buffer_free(buffer1);

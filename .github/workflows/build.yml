@@ -1,0 +1,63 @@
+name: Build Motion Detector
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Build universal version
+      run: make
+    
+    - name: Test help output
+      run: ./motion-detector --help
+    
+    - name: Build Pi Zero debug version
+      run: make pi-debug
+      
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: motion-detector-${{ matrix.os }}
+        path: |
+          motion-detector
+          motion-detector-pi-debug
+
+  cross-compile-arm:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install ARM cross-compiler
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+    
+    - name: Build for ARM (Pi Zero/Pi 4)
+      run: |
+        make CXX=arm-linux-gnueabihf-g++
+        mv motion-detector motion-detector-arm
+        
+    - name: Build Pi Zero debug version for ARM
+      run: |
+        make pi-debug CXX=arm-linux-gnueabihf-g++
+        mv motion-detector-pi-debug motion-detector-pi-debug-arm
+        
+    - name: Upload ARM binaries
+      uses: actions/upload-artifact@v3
+      with:
+        name: motion-detector-arm
+        path: |
+          motion-detector-arm
+          motion-detector-pi-debug-arm 
