@@ -46,7 +46,7 @@ make install
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-t <threshold>` | Pixel difference threshold (0-255) | 25 |
+| `-t <threshold>` | **Pixel sensitivity**: How different pixels must be to count as "changed" (0-255). Lower = more sensitive | 25 |
 | `-s <scale>` | Process every N-th pixel for speed | 1 |
 | `-m <motion_pct>` | Motion percentage threshold | 1.0 |
 | `-f [threshold]` | Fast file size comparison mode | 5% |
@@ -54,6 +54,29 @@ make install
 | `-b` | Enable 3x3 blur filter to reduce noise | - |
 | `-v` | Verbose output with detailed statistics | - |
 | `--benchmark` | Show timing information | - |
+
+### Threshold Explanation (`-t`)
+
+The **pixel threshold** controls how sensitive motion detection is:
+
+- **Value range**: 0-255 (brightness difference between pixels)
+- **Lower values** (5-15): Very sensitive - detects small changes, lighting shifts, noise
+- **Medium values** (20-35): Balanced - detects clear movement, ignores minor changes  
+- **Higher values** (40-80): Less sensitive - only detects major movements
+
+**Examples:**
+```bash
+# Very sensitive - detects even small lighting changes
+./motion-detector img1.jpg img2.jpg -t 10
+
+# Default sensitivity - good for most cases  
+./motion-detector img1.jpg img2.jpg -t 25
+
+# Less sensitive - only major movements
+./motion-detector img1.jpg img2.jpg -t 50
+```
+
+**How it works:** Each pixel is compared between images. If the brightness difference exceeds the threshold, it's counted as "changed". More changed pixels = more motion detected.
 
 ### Examples
 
