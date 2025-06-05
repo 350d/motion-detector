@@ -1,6 +1,21 @@
 // motion_detector.cpp - Advanced motion detection utility
 // Optimized for video frame analysis with threshold, scaling, and blur options
 
+// Pi Zero debug mode - conservative settings
+#ifdef MOTION_PI_ZERO_DEBUG
+    #warning "Building Pi Zero debug version with conservative settings"
+    #define MOTION_DISABLE_DC_MODE 1
+    #define MOTION_CONSERVATIVE_MEMORY 1
+    #define MOTION_MAX_SAFE_IMAGE_SIZE (1024*1024*3)  // 1MP max
+    #define MOTION_ENABLE_BOUNDS_CHECKING 1
+#endif
+
+// Conservative memory mode
+#ifdef MOTION_CONSERVATIVE_MEMORY
+    #define MOTION_MAX_BLUR_SIZE (800*600*3)  // VGA max for blur
+    #define MOTION_STACK_PROTECT 1
+#endif
+
 #define MOTION_STB_IMAGE_IMPLEMENTATION
 #include "motion_stb_image.h"
 
@@ -16,6 +31,25 @@
 #include <vector>
 #include <sys/stat.h>
 #include <iomanip>
+#include <signal.h>
+
+// Signal handler for segfault debugging
+#ifdef MOTION_PI_ZERO_DEBUG
+void segfault_handler(int sig) {
+    std::cerr << "\n!!! SEGFAULT DETECTED in Pi Zero debug mode !!!" << std::endl;
+    std::cerr << "Signal: " << sig << std::endl;
+    std::cerr << "This usually indicates:" << std::endl;
+    std::cerr << "  - Out of memory (Pi Zero has limited RAM)" << std::endl;
+    std::cerr << "  - Stack overflow from large images" << std::endl;
+    std::cerr << "  - ARM alignment issues" << std::endl;
+    std::cerr << "Try:" << std::endl;
+    std::cerr << "  - Smaller images (640x480 max recommended)" << std::endl;
+    std::cerr << "  - Higher scale factor (-s 8)" << std::endl;
+    std::cerr << "  - Avoid blur filter (-b flag)" << std::endl;
+    std::cerr << "  - Use simple version: motion-detector-simple" << std::endl;
+    exit(3);
+}
+#endif
 
 struct MotionDetectionParams {
     int pixel_threshold = 25;      // Pixel difference threshold (0-255)
@@ -31,13 +65,50 @@ struct MotionDetectionParams {
     bool benchmark = false;        // Show timing information
 };
 
-// Simple 3x3 blur kernel for noise reduction - safe version for large images
+// Check if image is safe to process on Pi Zero
+bool is_image_safe_for_pi_zero(int width, int height, int channels, bool verbose) {
+    size_t image_size = (size_t)width * (size_t)height * (size_t)channels;
+    
+    #ifdef MOTION_PI_ZERO_DEBUG
+    // Very conservative limits for Pi Zero
+    if (width > 1024 || height > 768) {
+        if (verbose) {
+            std::cerr << "Pi Zero Warning: Image " << width << "x" << height << 
+                " exceeds safe resolution (1024x768). Segfault risk high." << std::endl;
+        }
+        return false;
+    }
+    
+    if (image_size > MOTION_MAX_SAFE_IMAGE_SIZE) {
+        if (verbose) {
+            std::cerr << "Pi Zero Warning: Image size " << (image_size/1024/1024) << 
+                "MB exceeds safe limit (" << (MOTION_MAX_SAFE_IMAGE_SIZE/1024/1024) << 
+                "MB). Segfault risk high." << std::endl;
+        }
+        return false;
+    }
+    #endif
+    
+    return true;
+}
+
+// Simple 3x3 blur kernel for noise reduction - Pi Zero safe version
 void apply_blur_3x3(unsigned char* output, const unsigned char* input, 
                    int width, int height, int channels) {
     // Safety checks
     if (!output || !input || width <= 0 || height <= 0 || channels <= 0) {
         return;
     }
+    
+    #ifdef MOTION_CONSERVATIVE_MEMORY
+    // Skip blur for large images on Pi Zero
+    size_t total_size = (size_t)width * (size_t)height * (size_t)channels;
+    if (total_size > MOTION_MAX_BLUR_SIZE) {
+        // Just copy input to output without blur for safety
+        std::memcpy(output, input, total_size);
+        return;
+    }
+    #endif
     
     // For very large images, skip blur processing entirely to avoid crashes
     if (width > 4096 || height > 4096) {
@@ -325,6 +396,25 @@ void print_usage(const char* program_name) {
 }
 
 int main(int argc, char* argv[]) {
+    #ifdef MOTION_PI_ZERO_DEBUG
+    // Install segfault handler for debugging
+    signal(SIGSEGV, segfault_handler);
+    signal(SIGBUS, segfault_handler);
+    signal(SIGILL, segfault_handler);
+    
+    std::cout << "=== Pi Zero Debug Mode Active ===" << std::endl;
+    std::cout << "Conservative memory limits enabled" << std::endl;
+    std::cout << "Max safe image size: " << (MOTION_MAX_SAFE_IMAGE_SIZE/1024/1024) << "MB" << std::endl;
+    std::cout << "DC-only mode: " << 
+        #ifdef MOTION_DISABLE_DC_MODE
+        "DISABLED (for stability)"
+        #else
+        "Enabled"
+        #endif
+        << std::endl;
+    std::cout << "===============================\n" << std::endl;
+    #endif
+
     if (argc < 3) {
         print_usage(argv[0]);
         return 2;
@@ -358,10 +448,25 @@ int main(int argc, char* argv[]) {
         } else if (arg == "-b") {
             params.enable_blur = true;
         } else if (arg == "-d") {
+            #ifdef MOTION_DISABLE_DC_MODE
+            if (params.verbose) {
+                std::cout << "Warning: DC-only mode disabled in Pi Zero debug build" << std::endl;
+            }
+            params.dc_only_mode = false;
+            #else
             params.dc_only_mode = true;
+            #endif
         } else if (arg == "--dc-strict") {
+            #ifdef MOTION_DISABLE_DC_MODE
+            if (params.verbose) {
+                std::cout << "Warning: DC-strict mode disabled in Pi Zero debug build" << std::endl;
+            }
+            params.dc_only_mode = false;
+            params.dc_strict_mode = false;
+            #else
             params.dc_only_mode = true;
             params.dc_strict_mode = true;
+            #endif
         } else if (arg == "-v") {
             params.verbose = true;
         } else if (arg == "--benchmark") {
@@ -495,6 +600,20 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: Images must have the same dimensions and format" << std::endl;
         std::cerr << "Image 1: " << width1 << "x" << height1 << "x" << channels1 << std::endl;
         std::cerr << "Image 2: " << width2 << "x" << height2 << "x" << channels2 << std::endl;
+        motion_stbi_image_free(img1);
+        motion_stbi_image_free(img2);
+        if (buffer1) motion_stbi_buffer_free(buffer1);
+        if (buffer2) motion_stbi_buffer_free(buffer2);
+        return 2;
+    }
+
+    // Pi Zero safety check
+    if (!is_image_safe_for_pi_zero(width1, height1, channels1, params.verbose)) {
+        std::cerr << "Error: Image too large for safe processing on Pi Zero" << std::endl;
+        std::cerr << "Recommendations:" << std::endl;
+        std::cerr << "  - Resize images to 640x480 or smaller" << std::endl;
+        std::cerr << "  - Use higher scale factor: -s 8" << std::endl;
+        std::cerr << "  - Try simple version: motion-detector-simple" << std::endl;
         motion_stbi_image_free(img1);
         motion_stbi_image_free(img2);
         if (buffer1) motion_stbi_buffer_free(buffer1);

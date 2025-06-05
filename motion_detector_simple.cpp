@@ -216,7 +216,8 @@ int main(int argc, char* argv[]) {
         std::cout << "Motion detected: " << motion_percentage << "%" << std::endl;
         std::cout << "Result: " << (motion_detected ? "MOTION" : "NO_MOTION") << std::endl;
     } else {
-        std::cout << motion_percentage << std::endl;
+        // In non-verbose mode, output only 1 (motion detected) or 0 (no motion)
+        std::cout << (motion_detected ? 1 : 0) << std::endl;
     }
     
     if (params.benchmark) {
