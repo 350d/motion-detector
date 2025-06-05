@@ -46,23 +46,46 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
         sudo apt-get install -y libc6-dev-armhf-cross
+        # Try to install soft-float libraries if available
+        sudo apt-get install -y libc6-dev-armel-cross || true
     
-    - name: Build for Pi Zero (using hard-float for compatibility)
+    - name: Build for Pi Zero (ARMv6 with fallback strategy)
       run: |
-        echo "Building for Pi Zero (ARMv6 hard-float for compatibility)"
+        echo "Building for Pi Zero with fallback strategy"
         
-        # Use hard-float instead of soft-float to avoid library issues
-        # Pi Zero can handle hard-float even though it's ARMv6
-        CFLAGS="-march=armv6 -mfpu=vfp -mfloat-abi=hard -O2 -std=c++11"
+        # Try ARM mode hard-float first, fallback to soft-float if needed
+        set +e  # Don't exit on error
         
-        # Build main version
+        echo "Attempt 1: ARMv6 ARM mode with hard-float"
+        CFLAGS_HARD="-march=armv6 -marm -mfpu=vfp -mfloat-abi=hard -O2 -std=c++11"
         make clean
-        make CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$CFLAGS"
+        make CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$CFLAGS_HARD"
+        
+        if [ $? -ne 0 ]; then
+          echo "Hard-float failed, trying soft-float with generic flags"
+          CFLAGS_SOFT="-march=armv6 -mfloat-abi=soft -O2 -std=c++11"
+          make clean
+          make CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$CFLAGS_SOFT"
+          
+          if [ $? -ne 0 ]; then
+            echo "Soft-float failed, trying most basic ARMv6"
+            CFLAGS_BASIC="-march=armv6 -O2 -std=c++11"
+            make clean
+            make CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$CFLAGS_BASIC"
+            
+            if [ $? -ne 0 ]; then
+              echo "All Pi Zero build attempts failed"
+              exit 1
+            fi
+          fi
+        fi
+        
         mv motion-detector motion-detector-pi-zero
         
-        # Build debug version
+        # Build debug version (use basic flags for maximum compatibility)
+        echo "Building debug version with basic ARMv6 flags"
         make clean  
-        make pi-debug CXX="arm-linux-gnueabihf-g++" CXXFLAGS="-Os -g -fno-strict-aliasing -fstack-protector-strong -std=c++11"
+        make pi-debug CXX="arm-linux-gnueabihf-g++" CXXFLAGS="-march=armv6 -Os -g -std=c++11"
         mv motion-detector-pi-debug motion-detector-pi-debug-pi-zero
         
         # Check files
