@@ -45,13 +45,14 @@ void segfault_handler(int sig) {
     std::cerr << "Signal: " << sig << std::endl;
     std::cerr << "This usually indicates:" << std::endl;
     std::cerr << "  - Out of memory (Pi Zero has limited RAM)" << std::endl;
-    std::cerr << "  - Stack overflow from large images" << std::endl;
-    std::cerr << "  - ARM alignment issues" << std::endl;
+    std::cerr << "  - Image file corrupted or too large for stb_image" << std::endl;
+    std::cerr << "  - ARM alignment issues with JPEG decoding" << std::endl;
+    std::cerr << "  - Stack overflow from recursive JPEG parsing" << std::endl;
     std::cerr << "Try:" << std::endl;
-    std::cerr << "  - Smaller images (8K max: 7680x4320)" << std::endl;
-    std::cerr << "  - Higher scale factor (-s 2, -s 4, or -s 8 reduces memory 4x/16x/64x)" << std::endl;
-    std::cerr << "  - Avoid blur filter (-b flag)" << std::endl;
-    std::cerr << "  - Use file size mode (-f)" << std::endl;
+    std::cerr << "  - Check image file integrity: file /path/to/image.jpg" << std::endl;
+    std::cerr << "  - Reduce image size: convert -resize 800x600 input.jpg output.jpg" << std::endl;
+    std::cerr << "  - Use file size mode: -f (bypasses image loading entirely)" << std::endl;
+    std::cerr << "  - Test with simple images first (PNG, small JPEG)" << std::endl;
     exit(3);
 }
 #endif
@@ -69,6 +70,67 @@ struct MotionDetectionParams {
     bool verbose = false;          // Print detailed statistics
     bool benchmark = false;        // Show timing information
 };
+
+#ifdef MOTION_PI_ZERO_DEBUG
+// Pi Zero specific file validation
+bool validate_image_file_pi_zero(const char* filename, bool verbose) {
+    if (!filename) return false;
+    
+    // Check file exists and is readable
+    FILE* f = fopen(filename, "rb");
+    if (!f) {
+        if (verbose) {
+            std::cerr << "Pi Zero debug: Cannot open file " << filename << std::endl;
+        }
+        return false;
+    }
+    
+    // Get file size
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    if (file_size <= 0 || file_size > 50 * 1024 * 1024) { // Max 50MB file
+        if (verbose) {
+            std::cerr << "Pi Zero debug: File size " << file_size << " bytes is invalid or too large" << std::endl;
+        }
+        fclose(f);
+        return false;
+    }
+    
+    // Check file signature
+    unsigned char sig[4] = {0};
+    size_t read_bytes = fread(sig, 1, 4, f);
+    fclose(f);
+    
+    if (read_bytes < 4) {
+        if (verbose) {
+            std::cerr << "Pi Zero debug: Cannot read file signature" << std::endl;
+        }
+        return false;
+    }
+    
+    // Check for supported formats
+    bool is_valid = false;
+    if (sig[0] == 0xFF && sig[1] == 0xD8) {
+        is_valid = true; // JPEG
+        if (verbose) std::cout << "Pi Zero debug: JPEG file detected (" << file_size << " bytes)" << std::endl;
+    } else if (sig[0] == 0x89 && sig[1] == 0x50 && sig[2] == 0x4E && sig[3] == 0x47) {
+        is_valid = true; // PNG
+        if (verbose) std::cout << "Pi Zero debug: PNG file detected (" << file_size << " bytes)" << std::endl;
+    } else if (sig[0] == 0x42 && sig[1] == 0x4D) {
+        is_valid = true; // BMP
+        if (verbose) std::cout << "Pi Zero debug: BMP file detected (" << file_size << " bytes)" << std::endl;
+    }
+    
+    if (!is_valid && verbose) {
+        std::cerr << "Pi Zero debug: Unknown file format (signature: 0x" 
+                  << std::hex << (int)sig[0] << (int)sig[1] << (int)sig[2] << (int)sig[3] << std::dec << ")" << std::endl;
+    }
+    
+    return is_valid;
+}
+#endif
 
 // Check if image is safe to process on Pi Zero with scale factor consideration
 bool is_image_safe_for_pi_zero(int width, int height, int channels, bool verbose, int scale_factor = 1) {
@@ -346,13 +408,63 @@ unsigned char* load_image_optimized(const char* filename, int* width, int* heigh
                                    int* channels, const MotionDetectionParams& params,
                                    motion_buffer_t* reuse_buffer = nullptr) {
     
+    unsigned char* img = nullptr;  // Declare once for both paths
+    
     #ifdef MOTION_PI_ZERO_DEBUG
-    // Pi Zero debug mode: use only stb_image for troubleshooting
+    // Pi Zero debug mode: additional safety checks before loading
     if (params.verbose) {
-        std::cout << "Pi Zero debug mode: using standard stb_image only" << std::endl;
+        std::cout << "Pi Zero debug mode: performing safety checks" << std::endl;
     }
-    return stbi_load(filename, width, height, channels, 
-                    params.use_grayscale ? 1 : 0);
+    
+    // First validate file format and accessibility
+    if (!validate_image_file_pi_zero(filename, params.verbose)) {
+        if (params.verbose) {
+            std::cerr << "Pi Zero debug: File validation failed for " << filename << std::endl;
+        }
+        return nullptr;
+    }
+    
+    // Check file existence and basic info
+    int test_w, test_h, test_c;
+    if (!stbi_info(filename, &test_w, &test_h, &test_c)) {
+        if (params.verbose) {
+            std::cerr << "Pi Zero debug: Cannot read image info from " << filename << std::endl;
+            std::cerr << "Pi Zero debug: This might indicate corrupted JPEG headers or unsupported format" << std::endl;
+        }
+        return nullptr;
+    }
+    
+    if (params.verbose) {
+        std::cout << "Pi Zero debug: Image info " << test_w << "x" << test_h << "x" << test_c << std::endl;
+    }
+    
+    // Strict memory check for Pi Zero
+    size_t required_memory = (size_t)test_w * test_h * test_c;
+    if (required_memory > MOTION_MAX_SAFE_IMAGE_SIZE) {
+        if (params.verbose) {
+            std::cerr << "Pi Zero debug: Image too large - " << (required_memory / 1024 / 1024) 
+                      << "MB exceeds " << (MOTION_MAX_SAFE_IMAGE_SIZE / 1024 / 1024) << "MB limit" << std::endl;
+        }
+        return nullptr;
+    }
+    
+    if (params.verbose) {
+        std::cout << "Pi Zero debug: Loading with standard stb_image (" 
+                  << (required_memory / 1024 / 1024) << "MB)" << std::endl;
+    }
+    
+    // Use only standard stb_image for maximum compatibility
+    img = stbi_load(filename, width, height, channels, 
+                   params.use_grayscale ? 1 : 0);
+                                  
+    if (params.verbose) {
+        std::cout << "Pi Zero debug: Load result " << (img ? "success" : "failed") << std::endl;
+        if (img) {
+            std::cout << "Pi Zero debug: Final dimensions " << *width << "x" << *height << "x" << *channels << std::endl;
+        }
+    }
+    
+    return img;
     #endif
     
     // Intelligent mode selection based on parameters and JPEG compatibility
@@ -391,9 +503,9 @@ unsigned char* load_image_optimized(const char* filename, int* width, int* heigh
     }
     
     // Use optimized loader with JPEG-specific optimizations
-    unsigned char* img = motion_stbi_load(filename, width, height, channels, 
-                                         params.use_grayscale ? 1 : 0, 
-                                         motion_mode, reuse_buffer);
+    img = motion_stbi_load(filename, width, height, channels, 
+                          params.use_grayscale ? 1 : 0, 
+                          motion_mode, reuse_buffer);
     
     if (!img && params.dc_only_mode && params.dc_strict_mode) {
         if (params.verbose) {
