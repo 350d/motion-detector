@@ -6,7 +6,7 @@
     #warning "Building Pi Zero debug version with realistic settings for 512MB RAM"
     #define MOTION_DISABLE_DC_MODE 1
     #define MOTION_CONSERVATIVE_MEMORY 1
-    #define MOTION_MAX_SAFE_IMAGE_SIZE (3840*2160*3)  // 4K max (~25MB per image, 120MB total with buffers)
+    #define MOTION_MAX_SAFE_IMAGE_SIZE (7680*4320*3)  // 8K max (~100MB per image, but scale factor reduces memory usage)
     #define MOTION_ENABLE_BOUNDS_CHECKING 1
 #endif
 
@@ -52,8 +52,8 @@ void segfault_handler(int sig) {
     std::cerr << "  - Stack overflow from large images" << std::endl;
     std::cerr << "  - ARM alignment issues" << std::endl;
     std::cerr << "Try:" << std::endl;
-    std::cerr << "  - Smaller images (4K max: 3840x2160)" << std::endl;
-    std::cerr << "  - Higher scale factor (-s 4 or -s 8)" << std::endl;
+    std::cerr << "  - Smaller images (8K max: 7680x4320)" << std::endl;
+    std::cerr << "  - Higher scale factor (-s 2, -s 4, or -s 8 reduces memory 4x/16x/64x)" << std::endl;
     std::cerr << "  - Avoid blur filter (-b flag)" << std::endl;
     std::cerr << "  - Use file size mode (-f)" << std::endl;
     exit(3);
@@ -74,27 +74,41 @@ struct MotionDetectionParams {
     bool benchmark = false;        // Show timing information
 };
 
-// Check if image is safe to process on Pi Zero
-bool is_image_safe_for_pi_zero(int width, int height, int channels, bool verbose) {
+// Check if image is safe to process on Pi Zero with scale factor consideration
+bool is_image_safe_for_pi_zero(int width, int height, int channels, bool verbose, int scale_factor = 1) {
     size_t image_size = (size_t)width * (size_t)height * (size_t)channels;
     
     #ifdef MOTION_PI_ZERO_DEBUG
-    // Realistic limits for Pi Zero 512MB RAM - allow up to 4K
-    if (width > 3840 || height > 2160) {
+    // Calculate effective memory usage with scale factor
+    // Scale factor reduces memory usage quadratically: -s 2 = 4x less, -s 4 = 16x less
+    size_t effective_memory = image_size / (scale_factor * scale_factor);
+    
+    // Realistic limits for Pi Zero 512MB RAM - allow up to 8K with appropriate scale factor
+    if (width > 7680 || height > 4320) {
         if (verbose) {
             std::cerr << "Pi Zero Warning: Image " << width << "x" << height << 
-                " exceeds safe resolution (3840x2160). Memory limit reached." << std::endl;
+                " exceeds maximum resolution (7680x4320)." << std::endl;
         }
         return false;
     }
     
-    if (image_size > MOTION_MAX_SAFE_IMAGE_SIZE) {
+    // Memory check with scale factor consideration
+    // Allow up to ~150MB effective memory usage (with 2x images + buffers = ~450MB total)
+    size_t safe_memory_limit = 150 * 1024 * 1024; // 150MB effective
+    if (effective_memory > safe_memory_limit) {
         if (verbose) {
-            std::cerr << "Pi Zero Warning: Image size " << (image_size/1024/1024) << 
-                "MB exceeds safe limit (" << (MOTION_MAX_SAFE_IMAGE_SIZE/1024/1024) << 
-                "MB). Segfault risk high." << std::endl;
+            std::cerr << "Pi Zero Warning: Effective memory usage " << (effective_memory/1024/1024) << 
+                "MB (with scale factor " << scale_factor << ") exceeds safe limit (" << 
+                (safe_memory_limit/1024/1024) << "MB)." << std::endl;
+            std::cerr << "Try higher scale factor: -s " << (scale_factor * 2) << " or -s " << (scale_factor * 4) << std::endl;
         }
         return false;
+    }
+    
+    if (verbose && effective_memory > 50 * 1024 * 1024) {
+        std::cerr << "Pi Zero Info: Large image detected (" << (effective_memory/1024/1024) << 
+            "MB effective with -s " << scale_factor << "). Consider -s " << (scale_factor * 2) << 
+            " for better performance." << std::endl;
     }
     #endif
     
@@ -614,12 +628,13 @@ int main(int argc, char* argv[]) {
     }
 
     #ifdef MOTION_PI_ZERO_DEBUG
-    // Pi Zero safety check (only in debug mode)
-    if (!is_image_safe_for_pi_zero(width1, height1, channels1, params.verbose)) {
+    // Pi Zero safety check (only in debug mode) with scale factor consideration
+    if (!is_image_safe_for_pi_zero(width1, height1, channels1, params.verbose, params.scale_factor)) {
         std::cerr << "Error: Image too large for Pi Zero 512MB RAM" << std::endl;
         std::cerr << "Recommendations:" << std::endl;
-        std::cerr << "  - Resize images to 4K (3840x2160) or smaller" << std::endl;
-        std::cerr << "  - Use higher scale factor: -s 4 or -s 8" << std::endl;
+        std::cerr << "  - Resize images to 8K (7680x4320) or smaller" << std::endl;
+        std::cerr << "  - For large images use scale factor: -s 2, -s 4, or -s 8" << std::endl;
+        std::cerr << "  - Scale factor reduces memory usage by 4x, 16x, or 64x respectively" << std::endl;
         std::cerr << "  - Try file size mode: -f for ultra-fast processing" << std::endl;
         // Universal cleanup
         if (img1) motion_stbi_image_free(img1);
