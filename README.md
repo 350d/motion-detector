@@ -63,8 +63,8 @@ make test-pi
 | `-s <scale>` | **Decode scale factor**: 1=full, 2=half, 4=quarter, 8=eighth (JPEG scaled during decode!) | 1 |
 | `-m <motion_pct>` | Motion percentage threshold | 1.0 |
 | `-f [threshold]` | Fast file size comparison mode | 5% |
-| `-g` | Disable grayscale processing (use full RGB) | - |
-| `--fast` | **Ultra-fast mode**: fastest IDCT + upsampling (15-25% faster, lower quality) | - |
+| `-rgb` | **RGB mode**: Use RGB instead of grayscale (slower but more accurate) | - |
+| `-u` | **Ultra-fast mode**: fastest IDCT + upsampling (15-25% faster, lower quality) | - |
 | `-v` | Verbose output with detailed statistics | - |
 | `-b` | Show benchmark timing | - |
 
@@ -98,7 +98,7 @@ The **pixel threshold** controls how sensitive motion detection is:
 ./motion-detector prev.jpg curr.jpg
 
 # High sensitivity with RGB processing
-./motion-detector frame1.jpg frame2.jpg -t 15 -g
+./motion-detector frame1.jpg frame2.jpg -t 15 -rgb
 
 # Fast processing with 1/4 scale (16x memory reduction)
 ./motion-detector large1.jpg large2.jpg -s 4
@@ -107,13 +107,13 @@ The **pixel threshold** controls how sensitive motion detection is:
 ./motion-detector vid1.jpg vid2.jpg -s 8
 
 # Ultra-fast decode with fastest IDCT + upsampling
-./motion-detector img1.jpg img2.jpg --fast
+./motion-detector img1.jpg img2.jpg -u
 
 # Ultra-fast file size check
 ./motion-detector cam1.jpg cam2.jpg -f
 
-# Extreme speed: fast mode + quarter scale
-./motion-detector large1.jpg large2.jpg --fast -s 4
+# Extreme speed: ultra-fast + quarter scale
+./motion-detector large1.jpg large2.jpg -u -s 4
 
 # Detailed analysis with timing
 ./motion-detector img1.jpg img2.jpg -v -b -t 20
@@ -153,8 +153,8 @@ Large images are automatically scaled to prevent crashes:
 
 ### Processing Options
 - **Decode scaling** (`-s`): Real memory reduction during JPEG decode
-- **Grayscale** (default): 3x faster than RGB, use `-g` to disable
-- **Fast mode** (`--fast`): Fastest IDCT + upsampling (15-25% faster, lower quality)
+- **Grayscale** (default): 3x faster than RGB, use `-rgb` to enable RGB
+- **Ultra-fast mode** (`-u`): Fastest IDCT + upsampling (15-25% faster, lower quality)
 - **File size** (`-f`): ~1000x faster than pixel analysis
 - **Benchmark** (`-b`): Show detailed timing breakdown
 
@@ -179,14 +179,14 @@ Speed: ~1 microsecond vs ~1 millisecond for full pixel analysis.
 | Scale Factor | Memory Usage | Load Time | Motion Time | Total Time | Final Size |
 |-------------|-------------|-----------|-------------|------------|------------|
 | **1x (full)** | 900 KB | 1.54 ms | 0.42 ms | 1.96 ms | 640x480 |
-| **1x + fast** | 900 KB | 1.29 ms | 0.36 ms | 1.65 ms | 640x480 |
+| **1x + ultra** | 900 KB | 1.29 ms | 0.36 ms | 1.65 ms | 640x480 |
 | **2x (half)** | 225 KB | 0.87 ms | 0.07 ms | 0.95 ms | 320x240 |
 | **4x (quarter)** | 56 KB | 0.89 ms | 0.03 ms | 0.92 ms | 160x120 |
-| **4x + fast** | 56 KB | 0.68 ms | 0.02 ms | 0.70 ms | 160x120 |
+| **4x + ultra** | 56 KB | 0.68 ms | 0.02 ms | 0.70 ms | 160x120 |
 
 ### Benefits of libjpeg-turbo Optimizations:
 - **Decode scaling**: 16x memory reduction with 4x scale, real memory savings
-- **Fast mode**: 15-25% speed boost with fastest IDCT + upsampling
+- **Ultra-fast mode**: 15-25% speed boost with fastest IDCT + upsampling
 - **No segfaults**: ARM-safe libjpeg-turbo instead of problematic stb_image
 - **Real scaling**: Images actually smaller in memory, not just pixel skipping
 - **Pi Zero ready**: Automatic protection for large images

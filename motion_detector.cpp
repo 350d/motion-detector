@@ -258,8 +258,8 @@ void print_usage(const char* program_name) {
     std::cout << "  -s <scale>       Decode scale factor (1=full, 2=half, 4=quarter, 8=eighth, default: 1)" << std::endl;
     std::cout << "                   JPEG: scaled during decode (very efficient!)" << std::endl;
     std::cout << "  -m <motion>      Motion threshold percentage (default: 1.0)" << std::endl;
-    std::cout << "  -g               Disable grayscale conversion" << std::endl;
-    std::cout << "  --fast           Ultra-fast mode (fastest IDCT + upsampling, lower quality)" << std::endl;
+    std::cout << "  -rgb             Use RGB mode (slower than grayscale)" << std::endl;
+    std::cout << "  -u               Ultra-fast mode (fastest IDCT + upsampling, lower quality)" << std::endl;
     std::cout << "  -v               Verbose output" << std::endl;
     std::cout << "  -b               Show benchmark timing" << std::endl;
     std::cout << "  -f               File size check mode (fast pre-check)" << std::endl;
@@ -349,7 +349,7 @@ int main(int argc, char* argv[]) {
     }
     
     unsigned char* img2 = load_image_safe(image2_path, &width2, &height2, &channels2, 
-                                          params.scale_factor, params.verbose, params.fast_mode);
+                                          params.scale_factor, params.verbose, params.ultra_fast);
     if (!img2) {
         std::cerr << "Failed to load image: " << image2_path << std::endl;
         free(img1);
@@ -400,8 +400,8 @@ int main(int argc, char* argv[]) {
         std::cout << "Final image size: " << width1 << "x" << height1 << " (" << channels1 << " channels)" << std::endl;
         std::cout << "Memory usage: " << ((width1 * height1 * channels1 * 2) / 1024) << " KB" << std::endl;
         std::cout << "Pixel threshold: " << params.pixel_threshold << std::endl;
-        std::cout << "Grayscale mode: " << (params.use_grayscale ? "enabled" : "disabled") << std::endl;
-        std::cout << "Fast mode: " << (params.fast_mode ? "enabled (fastest IDCT + upsampling)" : "disabled") << std::endl;
+        std::cout << "RGB mode: " << (params.use_rgb ? "enabled" : "disabled (grayscale)") << std::endl;
+        std::cout << "Ultra-fast mode: " << (params.ultra_fast ? "enabled (fastest IDCT + upsampling)" : "disabled") << std::endl;
     }
     
     // Cleanup
