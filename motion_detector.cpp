@@ -29,7 +29,6 @@ struct MotionDetectionParams {
     bool file_size_check = false;  
     float file_size_threshold = 5.0f; 
     bool verbose = false;          
-    bool benchmark = false;        
     bool ultra_fast = false;       // Ultra-fast decode (lower quality)
 };
 
@@ -183,12 +182,71 @@ unsigned char* load_image_safe(const char* filename, int* width, int* height, in
     }
 }
 
+// Simple 3x3 Gaussian blur (in-place)
+void apply_blur_3x3(unsigned char* img, int width, int height, int channels) {
+    if (!img || width < 3 || height < 3) return;
+    
+    // Gaussian 3x3 kernel (normalized)
+    const float kernel[9] = {
+        0.0625f, 0.125f, 0.0625f,
+        0.125f,  0.25f,  0.125f,
+        0.0625f, 0.125f, 0.0625f
+    };
+    
+    // Create temporary buffer for one row
+    std::vector<unsigned char> temp_row(width * channels);
+    std::vector<unsigned char> temp_img(width * height * channels);
+    
+    // Copy original to temp buffer
+    memcpy(temp_img.data(), img, width * height * channels);
+    
+    // Apply blur (skip borders for simplicity)
+    for (int y = 1; y < height - 1; y++) {
+        for (int x = 1; x < width - 1; x++) {
+            for (int c = 0; c < channels; c++) {
+                float sum = 0.0f;
+                int kernel_idx = 0;
+                
+                // Apply 3x3 kernel
+                for (int ky = -1; ky <= 1; ky++) {
+                    for (int kx = -1; kx <= 1; kx++) {
+                        int src_idx = ((y + ky) * width + (x + kx)) * channels + c;
+                        sum += temp_img[src_idx] * kernel[kernel_idx++];
+                    }
+                }
+                
+                int dst_idx = (y * width + x) * channels + c;
+                img[dst_idx] = (unsigned char)std::max(0.0f, std::min(255.0f, sum));
+            }
+        }
+    }
+}
+
 // Calculate motion on already-scaled images (no pixel skipping needed!)
 float calculate_motion_scaled(const unsigned char* img1, const unsigned char* img2,
                               int width, int height, int channels,
                               const MotionDetectionParams& params) {
     if (!img1 || !img2 || width <= 0 || height <= 0 || channels <= 0) {
         return 0.0f;
+    }
+    
+    // Apply blur if enabled (creates copies for processing)
+    unsigned char* processed_img1 = nullptr;
+    unsigned char* processed_img2 = nullptr;
+    
+    if (params.enable_blur) {
+        size_t img_size = width * height * channels;
+        processed_img1 = (unsigned char*)malloc(img_size);
+        processed_img2 = (unsigned char*)malloc(img_size);
+        
+        if (processed_img1 && processed_img2) {
+            memcpy(processed_img1, img1, img_size);
+            memcpy(processed_img2, img2, img_size);
+            apply_blur_3x3(processed_img1, width, height, channels);
+            apply_blur_3x3(processed_img2, width, height, channels);
+            img1 = processed_img1;
+            img2 = processed_img2;
+        }
     }
     
     int total_pixels = width * height;
@@ -222,6 +280,10 @@ float calculate_motion_scaled(const unsigned char* img1, const unsigned char* im
             }
         }
     }
+    
+    // Clean up blur buffers if used
+    if (processed_img1) free(processed_img1);
+    if (processed_img2) free(processed_img2);
     
     return total_pixels > 0 ? (float)motion_pixels / total_pixels * 100.0f : 0.0f;
 }
@@ -260,8 +322,8 @@ void print_usage(const char* program_name) {
     std::cout << "  -m <motion>      Motion threshold percentage (default: 1.0)" << std::endl;
     std::cout << "  -rgb             Use RGB mode (slower than grayscale)" << std::endl;
     std::cout << "  -u               Ultra-fast mode (fastest IDCT + upsampling, lower quality)" << std::endl;
-    std::cout << "  -v               Verbose output" << std::endl;
-    std::cout << "  -b               Show benchmark timing" << std::endl;
+    std::cout << "  -b               Apply 3x3 Gaussian blur for noise reduction" << std::endl;
+    std::cout << "  -v               Verbose output (includes timing breakdown)" << std::endl;
     std::cout << "  -f               File size check mode (fast pre-check)" << std::endl;
     std::cout << "  --help           Show this help" << std::endl;
     std::cout << std::endl;
@@ -295,11 +357,11 @@ int main(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "-u") == 0) {
             params.ultra_fast = true;
             img_arg_start = i + 1;
+        } else if (strcmp(argv[i], "-b") == 0) {
+            params.enable_blur = true;
+            img_arg_start = i + 1;
         } else if (strcmp(argv[i], "-v") == 0) {
             params.verbose = true;
-            img_arg_start = i + 1;
-        } else if (strcmp(argv[i], "-b") == 0) {
-            params.benchmark = true;
             img_arg_start = i + 1;
         } else if (strcmp(argv[i], "-f") == 0) {
             params.file_size_check = true;
@@ -385,7 +447,7 @@ int main(int argc, char* argv[]) {
         std::cout << "No significant motion (threshold: " << params.motion_threshold << "%)" << std::endl;
     }
     
-    if (params.benchmark) {
+    if (params.verbose) {
         auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
         auto load_duration = std::chrono::duration_cast<std::chrono::microseconds>(load_end - load_start);
         auto motion_duration = std::chrono::duration_cast<std::chrono::microseconds>(motion_end - motion_start);
