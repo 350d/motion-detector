@@ -63,12 +63,11 @@ make test-pi
 | `-t&nbsp;<threshold>` | **Pixel sensitivity**: How different pixels must be to count as "changed" (0-255). Lower = more sensitive | 25 |
 | `-s <scale>` | **Decode scale factor**: 1=full, 2=half, 4=quarter, 8=eighth (JPEG scaled during decode!) | 1 |
 | `-m <motion_pct>` | Motion percentage threshold | 1.0 |
-| `-f [threshold]` | Fast file size comparison mode | 5% |
+| `-f [threshold]` | **File size mode**: Ultra-fast pre-check based on file size changes (threshold as number, default: 5) | 5 |
 | `-rgb` | **RGB mode**: Use RGB instead of grayscale (slower but more accurate) | - |
 | `-u` | **Ultra-fast mode**: fastest IDCT + upsampling (15-25% faster, lower quality) | - |
 | `-b` | **Blur mode**: Apply fast blur for noise reduction (separable filter) | - |
 | `-v` | **Verbose output**: Detailed statistics with timing breakdown | - |
-| `-f` | **File size mode**: Ultra-fast pre-check based on file size changes | - |
 
 ### Threshold Explanation (`-t`)
 
@@ -195,15 +194,26 @@ Large images are automatically scaled to prevent crashes:
 
 Ultra-fast motion detection based on file size changes:
 
+- **Parameter format**: `-f [threshold]` where threshold is a number (default: 5)
+- **Threshold meaning**: Percentage difference in file sizes to trigger motion detection
+- **Speed**: ~1 microsecond vs ~1 millisecond for full pixel analysis
+
+**Examples:**
 ```bash
-# Check if file content changed (ignoring headers)
+# Use default threshold (5% file size difference)
+./motion-detector prev.jpg curr.jpg -f
+
+# Custom threshold: 5% file size difference
 ./motion-detector prev.jpg curr.jpg -f 5
 
-# More sensitive file size detection
+# More sensitive: 2% file size difference
 ./motion-detector cam1.jpg cam2.jpg -f 2
+
+# Less sensitive: 10% file size difference  
+./motion-detector stable1.jpg stable2.jpg -f 10
 ```
 
-Speed: ~1 microsecond vs ~1 millisecond for full pixel analysis.
+**How it works**: Compares file sizes and calculates percentage difference. If the difference exceeds the threshold (as percentage), motion is detected. Much faster than pixel analysis but less accurate.
 
 ## Performance Results
 
