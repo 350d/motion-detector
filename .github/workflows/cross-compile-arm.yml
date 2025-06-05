@@ -175,6 +175,31 @@ jobs:
           echo "⚠️ Static version build failed - continuing without static version"
         fi
         
+    - name: 🍓 Build Pi Zero Debug Version
+      if: matrix.config.arch == 'armv6'
+      continue-on-error: true
+      run: |
+        echo "🔧 Building Pi Zero debug version (ARMv6 only)..."
+        
+        if make pi-debug \
+          CC="${{ matrix.config.cc }}" \
+          CXX="${{ matrix.config.cxx }}" \
+          CXXFLAGS="${{ matrix.config.cflags }} -std=c++11" \
+          LDFLAGS="${{ matrix.config.cflags }}"; then
+          
+          echo "✅ Pi Zero debug version built successfully"
+          ls -lh motion-detector-pi-debug
+          file motion-detector-pi-debug
+          echo "📊 Pi Zero debug features:"
+          echo "  ✓ Conservative memory limits"
+          echo "  ✓ DC-only mode disabled for stability"
+          echo "  ✓ Segfault debugging enabled"
+          echo "  ✓ Image size safety checks"
+          echo "  ✓ ARM alignment fixes"
+        else
+          echo "⚠️ Pi Zero debug version build failed"
+        fi
+        
     - name: 🧪 Verify Binary Compatibility
       run: |
         # Check simple version
@@ -203,6 +228,18 @@ jobs:
           echo ""
         fi
         
+        # Check Pi Zero debug version (ARMv6 only)
+        if [ -f "motion-detector-pi-debug" ]; then
+          echo "📋 Pi Zero debug version info:"
+          file motion-detector-pi-debug
+          readelf -h motion-detector-pi-debug | grep -E "(Machine|Flags|Class)" || true
+          echo "🍓 Pi Zero optimizations:"
+          echo "  ✓ ARMv6 soft-float compatible"
+          echo "  ✓ Conservative memory usage"
+          echo "  ✓ Segfault protection enabled"
+          echo ""
+        fi
+        
     - name: 📦 Create Release Package
       run: |
         # Create target directory
@@ -228,9 +265,23 @@ jobs:
           echo "✅ Static version packaged and stripped"
         fi
         
+        if [ -f "motion-detector-pi-debug" ]; then
+          $STRIP motion-detector-pi-debug
+          cp motion-detector-pi-debug "$PKG_DIR/"
+          echo "✅ Pi Zero debug version packaged and stripped"
+        fi
+        
         # Copy documentation and scripts
         cp README.md "$PKG_DIR/" || true
         cp build_for_pi.sh "$PKG_DIR/" || true
+        cp PI_ZERO_FIX.md "$PKG_DIR/" || true
+        
+        # Copy Pi Zero specific test script for ARMv6 builds
+        if [ "${{ matrix.config.arch }}" = "armv6" ] && [ -f "tests/pi_zero_debug_test.sh" ]; then
+          mkdir -p "$PKG_DIR/tests"
+          cp tests/pi_zero_debug_test.sh "$PKG_DIR/tests/"
+          echo "✅ Pi Zero debug test script included"
+        fi
         
         # Create target-specific installation script
         cat > "$PKG_DIR/install.sh" << EOF
@@ -264,9 +315,23 @@ jobs:
           echo "✅ Installed motion-detector-static to /usr/local/bin/motion-detector-static"
         fi
         
+        if [ -f "motion-detector-pi-debug" ]; then
+          sudo cp motion-detector-pi-debug /usr/local/bin/motion-detector-pi-debug
+          sudo chmod +x /usr/local/bin/motion-detector-pi-debug
+          echo "✅ Installed motion-detector-pi-debug to /usr/local/bin/motion-detector-pi-debug"
+          echo "   🍓 Pi Zero specific version with segfault protection"
+        fi
+        
         echo ""
         echo "🚀 Installation complete!"
         echo "Test with: motion-detector img1.jpg img2.jpg -g -s 2 -v"
+        
+        if [ -f "tests/pi_zero_debug_test.sh" ]; then
+          echo ""
+          echo "🍓 Pi Zero users: Run comprehensive test with:"
+          echo "   cd tests && ./pi_zero_debug_test.sh"
+          echo "   See PI_ZERO_FIX.md for troubleshooting guide"
+        fi
         EOF
         
         chmod +x "$PKG_DIR/install.sh"
@@ -299,6 +364,13 @@ jobs:
         - Larger file size but maximum compatibility
         - **Recommended for deployment**
         
+        ### Pi Zero Debug Version (motion-detector-pi-debug) 🍓
+        - **Pi Zero W/Zero 2 W specific** (ARMv6 only)
+        - Segfault protection and conservative memory usage
+        - DC-only mode disabled for stability
+        - Image size safety checks
+        - **Recommended for Pi Zero troubleshooting**
+        
         ## Installation
         \`\`\`bash
         ./install.sh
@@ -314,12 +386,16 @@ jobs:
         
         # Portable static version (works everywhere)
         motion-detector-static image1.jpg image2.jpg -g -s 2 -v
+        
+        # Pi Zero debug version (ARMv6 only, segfault protection)
+        motion-detector-pi-debug image1.jpg image2.jpg -s 8 -g -v
         \`\`\`
         
         ## Performance Notes
         - **Simple**: Maximum compatibility, standard performance
         - **Advanced**: Platform-optimized, best performance
         - **Static**: Portable, good performance, no dependencies
+        - **Pi Zero Debug**: Conservative settings, segfault protection, stability-focused
         
         ## Deployment Recommendation
         Use **motion-detector-static** for production deployment as it has no external dependencies.
