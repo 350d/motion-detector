@@ -41,29 +41,33 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Install Pi Zero cross-compiler and multiarch
+    - name: Install Pi Zero cross-compiler and soft-float libraries
       run: |
         sudo apt-get update
+        # Install both hard-float and soft-float cross-compilers
         sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
-        sudo apt-get install -y libc6-dev-armhf-cross
-        # Try to install soft-float libraries if available
-        sudo apt-get install -y libc6-dev-armel-cross || true
+        sudo apt-get install -y gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
+        # Install development libraries for both targets
+        sudo apt-get install -y libc6-dev-armhf-cross libc6-dev-armel-cross
+        # Install additional libraries for static linking
+        sudo apt-get install -y libgcc-s1-armel-cross libstdc++6-armel-cross || true
     
     - name: Build static binaries for Pi Zero
       run: |
-        echo "Building STATIC binaries for Pi Zero (no dependencies)"
+        echo "Building STATIC binaries for Pi Zero (ARMv6 soft-float)"
         
-        # Use basic ARMv6 flags for maximum compatibility + static linking
-        STATIC_FLAGS="-march=armv6 -O2 -std=c++11 -static -static-libgcc -static-libstdc++"
+        # Pi Zero ARMv6 with soft-float (no FPU) + static linking
+        # Use gnueabi (soft-float) compiler for Pi Zero compatibility
+        STATIC_FLAGS="-march=armv6 -mfloat-abi=soft -O2 -std=c++11 -static -static-libgcc -static-libstdc++"
         
-        echo "Building static main version"
+        echo "Building static main version with soft-float compiler"
         make clean
-        make CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$STATIC_FLAGS" LIBS="-lm"
+        make CXX="arm-linux-gnueabi-g++" CXXFLAGS="$STATIC_FLAGS" LIBS="-lm"
         mv motion-detector motion-detector-pi-zero-static
         
-        echo "Building static debug version"  
+        echo "Building static debug version with soft-float compiler"  
         make clean
-        make pi-debug-static CXX="arm-linux-gnueabihf-g++" CXXFLAGS="$STATIC_FLAGS"
+        make pi-debug-static CXX="arm-linux-gnueabi-g++" CXXFLAGS="$STATIC_FLAGS"
         mv motion-detector-pi-debug-static motion-detector-pi-debug-pi-zero-static
         
         # Check files and dependencies
@@ -72,8 +76,8 @@ jobs:
         file motion-detector-pi-debug-pi-zero-static
         
         echo "=== Checking dependencies (should be statically linked) ==="
-        arm-linux-gnueabihf-ldd motion-detector-pi-zero-static || echo "Static binary - no dependencies (good!)"
-        arm-linux-gnueabihf-ldd motion-detector-pi-debug-pi-zero-static || echo "Static binary - no dependencies (good!)"
+        arm-linux-gnueabi-ldd motion-detector-pi-zero-static || echo "Static binary - no dependencies (good!)"
+        arm-linux-gnueabi-ldd motion-detector-pi-debug-pi-zero-static || echo "Static binary - no dependencies (good!)"
         
         echo "=== File sizes ==="
         ls -lh motion-detector-pi-zero-static motion-detector-pi-debug-pi-zero-static
