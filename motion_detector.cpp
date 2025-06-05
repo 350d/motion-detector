@@ -27,10 +27,6 @@
 #define MOTION_STB_IMAGE_IMPLEMENTATION
 #include "motion_stb_image.h"
 
-// Include standard stb_image as fallback
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
 #include <iostream>
 #include <cmath>
 #include <algorithm>
@@ -76,7 +72,9 @@ struct MotionDetectionParams {
 
 // Check if image is safe to process on Pi Zero with scale factor consideration
 bool is_image_safe_for_pi_zero(int width, int height, int channels, bool verbose, int scale_factor = 1) {
+    (void)verbose; (void)scale_factor; // Suppress unused parameter warnings
     size_t image_size = (size_t)width * (size_t)height * (size_t)channels;
+    (void)image_size; // Suppress unused variable warning
     
     #ifdef MOTION_PI_ZERO_DEBUG
     // Calculate effective memory usage with scale factor
@@ -343,7 +341,7 @@ float calculate_motion_advanced(const unsigned char* img1, const unsigned char* 
            (100.0f * changed_pixels / total_pixels_checked) : 0.0f;
 }
 
-// Simplified optimized image loader - no fallback needed
+// Optimized image loader with intelligent mode selection
 unsigned char* load_image_optimized(const char* filename, int* width, int* height, 
                                    int* channels, const MotionDetectionParams& params,
                                    motion_buffer_t* reuse_buffer = nullptr) {
@@ -357,26 +355,63 @@ unsigned char* load_image_optimized(const char* filename, int* width, int* heigh
                     params.use_grayscale ? 1 : 0);
     #endif
     
-    // Select motion mode based on parameters
+    // Intelligent mode selection based on parameters and JPEG compatibility
     int motion_mode = MOTION_MODE_FULL;
     
-    if (params.dc_only_mode) {
-        // DC-only mode is no longer complex - just falls back to full mode
-        motion_mode = MOTION_MODE_FULL;
-    } else if (params.scale_factor >= 4) {
-        motion_mode = MOTION_MODE_QUARTER;
-    } else if (params.scale_factor >= 2) {
-        motion_mode = MOTION_MODE_HALF;
+    // First check if it's a JPEG and predict its size
+    int predicted_width = 0, predicted_height = 0;
+    bool is_jpeg = motion_stbi_test_jpeg_compatibility(filename, &predicted_width, &predicted_height);
+    
+    if (params.verbose && is_jpeg) {
+        std::cout << "JPEG detected: " << predicted_width << "x" << predicted_height 
+                  << " (estimated " << (predicted_width * predicted_height * 3 / 1024) << " KB)" << std::endl;
     }
     
-    // Use simplified optimized loader (just stb_image wrapper with caching/downsampling)
+    // Select optimal mode based on requirements and image characteristics
+    if (params.dc_only_mode && is_jpeg) {
+        motion_mode = MOTION_MODE_DC_ONLY;
+        if (params.verbose) {
+            std::cout << "Using DC-only mode for ultra-fast JPEG preview" << std::endl;
+        }
+    } else if (params.scale_factor >= 8 || (is_jpeg && predicted_width > 2560)) {
+        motion_mode = MOTION_MODE_EIGHTH;
+        if (params.verbose) {
+            std::cout << "Using 1/8 scale mode for large image optimization" << std::endl;
+        }
+    } else if (params.scale_factor >= 4 || (is_jpeg && predicted_width > 1280)) {
+        motion_mode = MOTION_MODE_QUARTER;
+        if (params.verbose) {
+            std::cout << "Using 1/4 scale mode for memory efficiency" << std::endl;
+        }
+    } else if (params.scale_factor >= 2 || (is_jpeg && predicted_width > 640)) {
+        motion_mode = MOTION_MODE_HALF;
+        if (params.verbose) {
+            std::cout << "Using 1/2 scale mode for balanced performance" << std::endl;
+        }
+    }
+    
+    // Use optimized loader with JPEG-specific optimizations
     unsigned char* img = motion_stbi_load(filename, width, height, channels, 
                                          params.use_grayscale ? 1 : 0, 
                                          motion_mode, reuse_buffer);
     
+    if (!img && params.dc_only_mode && params.dc_strict_mode) {
+        if (params.verbose) {
+            std::cerr << "Error: DC-only mode failed and strict mode enabled" << std::endl;
+        }
+        return nullptr;
+    }
+    
     if (params.verbose && img) {
         std::cout << "Image loaded successfully (" << *width << "x" << *height 
                   << ", " << *channels << " channels)" << std::endl;
+        if (motion_mode != MOTION_MODE_FULL) {
+            std::cout << "Applied optimization mode: " << 
+                (motion_mode == MOTION_MODE_HALF ? "1/2 scale" :
+                 motion_mode == MOTION_MODE_QUARTER ? "1/4 scale" :
+                 motion_mode == MOTION_MODE_EIGHTH ? "1/8 scale" :
+                 motion_mode == MOTION_MODE_DC_ONLY ? "DC-only preview" : "full") << std::endl;
+        }
     }
     
     return img;
